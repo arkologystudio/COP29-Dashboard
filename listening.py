@@ -23,6 +23,8 @@ def get_responding_data(query=None):
         else:
             query = "COP29, climate change, sustainability" 
 
+    # print(query)
+
     response = exa.search_and_contents(
         query,
         num_results=5,
