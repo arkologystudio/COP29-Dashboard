@@ -1,41 +1,54 @@
-import streamlit as st
-from listening import get_responding_data  # Import the function
+from exa_py import Exa
+from dotenv import load_dotenv
+import os
 
-# Initialize the list in session state if it doesn't exist
-if "listening_data" not in st.session_state:
-    st.session_state.listening_data = [
-        "#globalwarming", 
-        "#cop25", 
-        "@longnose11", 
-        "@hightail312"
-    ]
+load_dotenv()
 
-# Fetch the responding data from the listening API
-responding_data = get_responding_data()  # This will fetch live data
+exa = Exa(os.environ["EXA_API_KEY"])
 
-st.title("Dashboard")
+LISTENING_TAGS_FILE = "listening_tags.txt"
 
-tab1, tab2 = st.tabs(["Listening", "Responding"])
+def load_listening_tags():
+    if os.path.exists(LISTENING_TAGS_FILE):
+        with open(LISTENING_TAGS_FILE, "r") as file:
+            return [line.strip() for line in file.readlines() if line.strip()]
+    return []
 
-# Listening
-with tab1:
-    st.header("Listening")
+def get_responding_data(query=None):
+    #Think about this
+    if query is None:
+        listening_tags = load_listening_tags()
+        if listening_tags:
+            query = ", ".join(listening_tags)
+        else:
+            query = "COP29, climate change, sustainability" 
+
+    response = exa.search_and_contents(
+        query,
+        num_results=5,
+        use_autoprompt=True,
+        include_domains=["x.com"],
+        category="tweet",
+        text={"max_characters": 500},
+        highlights=True
+    )
+
+    responding_data = []
+    for result in response.results:
+        narrative = {
+            "title": result.title or "No Title",
+            "link": result.url,
+            "content": result.text[:200] + "..." if result.text else "No Content",
+        }
+        responding_data.append(narrative)
     
-    listening_data_str = "\n".join(st.session_state.listening_data)
-    
-    user_input = st.text_area("Listening for:", listening_data_str)
-    
-    if st.button("Update List"):
-        st.session_state.listening_data = user_input.split("\n")
-        st.success("List updated successfully!")
+    return responding_data
 
-# Responding
-with tab2:
-    st.header("Responding")
-    st.write("List of identified harmful narratives:")
-    
-    for narrative in responding_data:
-        st.subheader(narrative["title"])
-        st.write(f"Link: [Click here]({narrative['link']})")
-        st.write(f"Content: {narrative['content']}")
-        st.write("---")
+# Sample function to print results to console (for testing)
+if __name__ == "__main__":
+    data = get_responding_data()
+    for item in data:
+        print(f"Title: {item['title']}")
+        print(f"Link: {item['link']}")
+        print(f"Content: {item['content']}")
+        print("---")

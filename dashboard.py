@@ -1,13 +1,23 @@
 import streamlit as st
-from fetch_data import get_responding_data  # Import from fetch_data.py now
+import os
+from listening import get_responding_data 
+
+LISTENING_TAGS_FILE = "listening_tags.txt"
+
+def load_listening_tags():
+    if os.path.exists(LISTENING_TAGS_FILE):
+        with open(LISTENING_TAGS_FILE, "r") as file:
+            return [line.strip() for line in file.readlines() if line.strip()]
+    return []
+
+def save_listening_tags(tags_list):
+    with open(LISTENING_TAGS_FILE, "w") as file:
+        for tag in tags_list:
+            file.write(f"{tag}\n")
+
 
 if "listening_data" not in st.session_state:
-    st.session_state.listening_data = [
-        "#globalwarming", 
-        "#cop25", 
-        "@longnose11", 
-        "@hightail312"
-    ]
+    st.session_state.listening_data = load_listening_tags()
 
 if "responding_data" not in st.session_state:
     st.session_state.responding_data = []
@@ -19,17 +29,18 @@ tab1, tab2 = st.tabs(["Listening", "Responding"])
 # Listening
 with tab1:
     st.header("Listening")
-    
+
     listening_data_str = "\n".join(st.session_state.listening_data)
     
     user_input = st.text_area("Listening for:", listening_data_str)
     
     if st.button("Update List"):
         st.session_state.listening_data = user_input.split("\n")
+        save_listening_tags(st.session_state.listening_data)
         st.success("List updated successfully!")
-    
+
     if st.button("Find Narratives"):
-        st.session_state.responding_data = get_responding_data()
+        st.session_state.responding_data = get_responding_data(query=", ".join(st.session_state.listening_data))
         st.success("Narratives fetched successfully!")
 
 # Responding
