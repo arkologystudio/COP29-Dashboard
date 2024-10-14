@@ -1,32 +1,32 @@
+import os
+import json
 from exa_py import Exa
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
-exa = Exa(os.environ["EXA_API_KEY"])
+LISTENING_TAGS_FILE = "listening_tags.json"
+LISTENING_RESPONSES_FILE = "listening_responses.json"
 
-LISTENING_TAGS_FILE = "listening_tags.txt"
+exa = Exa(os.environ["EXA_API_KEY"])
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
-        with open(LISTENING_TAGS_FILE, "r") as file:
-            return [line.strip() for line in file.readlines() if line.strip()]
+        with open(LISTENING_TAGS_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
     return []
 
-def get_responding_data(query=None):
-    #Think about this
-    if query is None:
-        listening_tags = load_listening_tags()
-        if listening_tags:
-            query = ", ".join(listening_tags)
-        else:
-            query = "COP29, climate change, sustainability" 
+def save_listening_responses(responses):
+    with open(LISTENING_RESPONSES_FILE, "w", encoding="utf-8") as file:
+        json.dump(responses, file, indent=4)
 
-    # print(query)
+def get_responding_data():
+    tags = load_listening_tags()
+
+    natural_query = ", ".join(tags)
 
     response = exa.search_and_contents(
-        query,
+        natural_query,
         num_results=5,
         use_autoprompt=True,
         include_domains=["x.com"],
@@ -36,21 +36,14 @@ def get_responding_data(query=None):
     )
 
     responding_data = []
-    for result in response.results:
-        narrative = {
-            "title": result.title or "No Title",
-            "link": result.url,
-            "content": result.text[:200] + "..." if result.text else "No Content",
-        }
-        responding_data.append(narrative)
-    
-    return responding_data
 
-# Sample function to print results to console (for testing)
-if __name__ == "__main__":
-    data = get_responding_data()
-    for item in data:
-        print(f"Title: {item['title']}")
-        print(f"Link: {item['link']}")
-        print(f"Content: {item['content']}")
-        print("---")
+    for result in response.results:
+        responding_data.append({
+            "title": result.title if result.title else "No title",
+            "link": result.url,
+            "content": result.text[:200]
+        })
+
+    save_listening_responses(responding_data)
+
+    return responding_data

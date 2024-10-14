@@ -1,47 +1,44 @@
 import streamlit as st
 import os
+import json
 from listening import get_responding_data 
 
-LISTENING_TAGS_FILE = "listening_tags.txt"
-LISTENING_RESPONSES_FILE = "listening_responses.txt"
-
+LISTENING_TAGS_FILE = "listening_tags.json"
+LISTENING_RESPONSES_FILE = "listening_responses.json"
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
-        with open(LISTENING_TAGS_FILE, "r") as file:
-            return [line.strip() for line in file.readlines() if line.strip()]
+        try:
+            with open(LISTENING_TAGS_FILE, "r", encoding="utf-8") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            st.error(f"Error: {LISTENING_TAGS_FILE} contains invalid JSON. Resetting to an empty list.")
+            return []
     return []
 
 def save_listening_tags(tags_list):
-    with open(LISTENING_TAGS_FILE, "w") as file:
-        for tag in tags_list:
-            file.write(f"{tag}\n")
+    with open(LISTENING_TAGS_FILE, "w", encoding="utf-8") as file:
+        json.dump(tags_list, file, indent=4)
 
 def load_listening_responses():
     if os.path.exists(LISTENING_RESPONSES_FILE):
-        with open(LISTENING_RESPONSES_FILE, "r", encoding="utf-8") as file:
-            responses = []
-            for line in file.readlines():
-                title, link, content = line.strip().split(" || ")
-                responses.append({
-                    "title": title,
-                    "link": link,
-                    "content": content
-                })
-            return responses
+        try:
+            with open(LISTENING_RESPONSES_FILE, "r", encoding="utf-8") as file:
+                return json.load(file)
+        except json.JSONDecodeError:
+            st.error(f"Error: {LISTENING_RESPONSES_FILE} contains invalid JSON. Resetting to an empty list.")
+            return []
     return []
-
 
 def save_listening_responses(responses_list):
     with open(LISTENING_RESPONSES_FILE, "w", encoding="utf-8") as file:
-        for response in responses_list:
-            file.write(f"{response['title']} || {response['link']} || {response['content']}\n")
-
+        json.dump(responses_list, file, indent=4)
 
 if "listening_data" not in st.session_state:
     st.session_state.listening_data = load_listening_tags()
 
-responding_data = load_listening_responses()
+if "responding_data" not in st.session_state:
+    st.session_state.responding_data = load_listening_responses()
 
 st.title("Dashboard")
 
@@ -60,20 +57,20 @@ with tab1:
         save_listening_tags(st.session_state.listening_data)
         st.success("List updated successfully!")
 
-
-    if st.button("Find Narratives"):
-        new_responses = get_responding_data(query=", ".join(st.session_state.listening_data))
-        responding_data.extend(new_responses)
-        save_listening_responses(responding_data)
-        st.success("Narratives fetched and saved successfully!")
-
 # Responding
 with tab2:
     st.header("Responding")
     st.write("List of identified harmful narratives:")
-    
-    if responding_data:
-        for narrative in responding_data:
+
+    if st.button("Find Narratives"):
+        responding_data = get_responding_data()
+        
+        st.session_state.responding_data = responding_data
+        save_listening_responses(responding_data)
+        st.success("Narratives fetched successfully!")
+
+    if st.session_state.responding_data:
+        for narrative in st.session_state.responding_data:
             st.subheader(narrative["title"])
             st.write(f"Link: [Click here]({narrative['link']})")
             st.write(f"Content: {narrative['content']}")
