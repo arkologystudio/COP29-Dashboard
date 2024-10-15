@@ -34,6 +34,12 @@ def save_listening_responses(responses_list):
     with open(LISTENING_RESPONSES_FILE, "w", encoding="utf-8") as file:
         json.dump(responses_list, file, indent=4)
 
+def remove_response(title):
+    responses = load_listening_responses()
+    updated_responses = [r for r in responses if r["title"] != title]
+    save_listening_responses(updated_responses)
+    return updated_responses
+
 if "listening_data" not in st.session_state:
     st.session_state.listening_data = load_listening_tags()
 
@@ -64,16 +70,20 @@ with tab2:
 
     if st.button("Find Narratives"):
         responding_data = get_responding_data()
-        
         st.session_state.responding_data = responding_data
-        save_listening_responses(responding_data)
         st.success("Narratives fetched successfully!")
 
     if st.session_state.responding_data:
         for narrative in st.session_state.responding_data:
             st.subheader(narrative["title"])
+            st.write(f"Narrative: {narrative['narrative']}")
             st.write(f"Link: [Click here]({narrative['link']})")
             st.write(f"Content: {narrative['content']}")
+            
+            # Mark completed button
+            if st.button("Mark Completed", key=f"key_{narrative['title']}"):
+                st.session_state.responding_data = remove_response(narrative["title"])
+                st.session_state.responding_data = load_listening_responses()
             st.write("---")
     else:
         st.write("No harmful narratives found yet. Please use the 'Find Narratives' button to search.")

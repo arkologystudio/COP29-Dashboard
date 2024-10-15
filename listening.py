@@ -3,6 +3,7 @@ import json
 import openai
 from exa_py import Exa
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -36,7 +37,7 @@ def call_chatgpt_api(responding_data):
     3. Link: The link to the post.
     4. Content: The content of the post.
 
-    Reply with just a like-for-like array of the data you receive and nothing else. Each post should be formatted as:
+    Reply with a like-for-like array of the data you receive and nothing else. This array should be in the format of a json array but should be in raw text. Each post should be formatted as:
 
     {
         "title": "some title",
@@ -54,7 +55,7 @@ def call_chatgpt_api(responding_data):
             3. Link: The link to the post.
             4. Content: The content of the post.
 
-            Reply with just a like-for-like array of the data you receive and nothing else. Each post should be formatted as:
+            Reply with just a like-for-like array of the data you receive and nothing else. This array should be in the format of a json array but should be in raw text. Each post should be formatted as:
 
             {
                 "title": "some title",
@@ -70,12 +71,15 @@ def call_chatgpt_api(responding_data):
         model="gpt-4o",
         messages=messages
     )
+    
+    print(response.choices[0].message.content)
 
-    return response.choices[0].message
+    return response.choices[0].message.content
 
 def get_responding_data():
     tags = load_listening_tags()
     natural_query = ", ".join(tags)
+    one_week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
 
     response = exa.search_and_contents(
         natural_query,
@@ -84,8 +88,11 @@ def get_responding_data():
         include_domains=["x.com"],
         category="tweet",
         text={"max_characters": 500},
-        highlights=True
+        highlights=True,
+        start_published_date=one_week_ago
     )
+    
+    #TODO: HANDLE FORMATTING ERRORS IN RESPONSE OBJECT FROM CHATGPT API
 
     responding_data = []
 
@@ -98,10 +105,8 @@ def get_responding_data():
 
     processed_data = call_chatgpt_api(responding_data)
     new_responses = json.loads(processed_data)
-
-    existing_responses = load_listening_responses()
-    all_responses = existing_responses + new_responses
-
+    old_responses= load_listening_responses()
+    all_responses = new_responses + old_responses
     save_listening_responses(all_responses)
 
     return all_responses
