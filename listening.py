@@ -91,8 +91,6 @@ def get_responding_data():
         highlights=True,
         start_published_date=one_week_ago
     )
-    
-    #TODO: HANDLE FORMATTING ERRORS IN RESPONSE OBJECT FROM CHATGPT API
 
     responding_data = []
 
@@ -104,6 +102,15 @@ def get_responding_data():
         })
 
     processed_data = call_chatgpt_api(responding_data)
+    
+    # gross
+    if processed_data.startswith("```json"):
+        processed_data = processed_data[7:-3].strip()
+
+    try:
+        new_responses = json.loads(processed_data)
+    except json.JSONDecodeError:
+        raise ValueError("Incorrect format returned from ChatGPT. Try again.")
     new_responses = json.loads(processed_data)
     old_responses= load_listening_responses()
     all_responses = new_responses + old_responses
