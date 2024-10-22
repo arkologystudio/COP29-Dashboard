@@ -2,10 +2,23 @@ import streamlit as st
 import os
 import json
 from listening import get_responding_data
+import gspread
+from google.oauth2.service_account import Credentials
+import datetime
 
+# File paths
 LISTENING_TAGS_FILE = "listening_tags.json"
 LISTENING_RESPONSES_FILE = "listening_responses.json"
 CARD_TEMPLATE_FILE = "templates/response_card.html"
+
+# Google Sheets
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SERVICE_ACCOUNT_FILE = 'cop29-resources-archive-sheet-b1f6dc1221fa.json'
+SHEET_ID = '1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M'
+
+credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+client = gspread.authorize(credentials)
+sheet = client.open_by_key(SHEET_ID).sheet1
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
@@ -35,9 +48,25 @@ def save_listening_responses(responses_list):
     with open(LISTENING_RESPONSES_FILE, "w", encoding="utf-8") as file:
         json.dump(responses_list, file, indent=4)
 
+def append_to_google_sheets(narrative):
+    row_data = [
+        narrative['title'],
+        narrative['narrative'],
+        narrative['link'],
+        narrative['content'],
+        datetime.date.today().strftime("%Y-%m-%d")
+    ]
+    sheet.append_row(row_data)
+
 def remove_response(title):
     responses = load_listening_responses()
     updated_responses = [r for r in responses if r["title"] != title]
+    
+    for narrative in responses:
+        if narrative["title"] == title:
+            append_to_google_sheets(narrative)
+            break
+
     save_listening_responses(updated_responses)
     return updated_responses
 
@@ -53,7 +82,7 @@ if "responding_data" not in st.session_state:
 
 st.title("Dashboard")
 
-tab1, tab2 = st.tabs(["Responding", "Listening"])
+tab1, tab2, tab3 = st.tabs(["Responding", "Listening","Archive"])
 
 # Responding
 with tab1:
@@ -64,6 +93,7 @@ with tab1:
         responding_data = get_responding_data()
         st.session_state.responding_data = responding_data
         st.success("Narratives fetched successfully!")
+    st.write("---")
 
     if st.session_state.responding_data:
         card_template = load_card_template()
@@ -75,8 +105,8 @@ with tab1:
 
             st.markdown(card_html, unsafe_allow_html=True)
 
-            # Mark completed button
-            if st.button("Mark Completed", key=f"key_{narrative['title']}", on_click=remove_response, args=(narrative['title'],)):
+            # Archive button
+            if st.button("Archive", key=f"key_{narrative['title']}", on_click=remove_response, args=(narrative['title'],)):
                 st.session_state.dummy_flag = not st.session_state.get('dummy_flag', False)
     else:
         st.write("No harmful narratives found yet. Please use the 'Find Narratives' button to search.")
@@ -93,3 +123,9 @@ with tab2:
         st.session_state.listening_data = user_input.split("\n")
         save_listening_tags(st.session_state.listening_data)
         st.success("List updated successfully!")
+
+# Archive:
+with tab3: 
+    st.header("Archived Responses")
+    st.write("View the archived responses in the Google Sheet:")
+    st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)

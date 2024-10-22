@@ -79,8 +79,11 @@ def call_chatgpt_api(responding_data):
 def get_responding_data():
     tags = load_listening_tags()
     natural_query = ", ".join(tags)
-    one_week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    date = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    today =  (datetime.now()).strftime("%Y-%m-%d")
 
+    #TODO: filter by reach?
     response = exa.search_and_contents(
         natural_query,
         num_results=5,
@@ -89,7 +92,7 @@ def get_responding_data():
         category="tweet",
         text={"max_characters": 500},
         highlights=True,
-        start_published_date=one_week_ago
+        start_published_date=today
     )
 
     responding_data = []
@@ -101,6 +104,7 @@ def get_responding_data():
             "content": result.text[:200]
         })
 
+    print(responding_data)
     processed_data = call_chatgpt_api(responding_data)
     
     # gross
