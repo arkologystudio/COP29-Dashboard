@@ -11,7 +11,7 @@ LISTENING_TAGS_FILE = "listening_tags.json"
 LISTENING_RESPONSES_FILE = "listening_responses.json"
 CARD_TEMPLATE_FILE = "templates/response_card.html"
 
-# Google Sheets
+# Google Sheets setup
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = 'cop29-resources-archive-sheet-b1f6dc1221fa.json'
 SHEET_ID = '1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M'
@@ -70,6 +70,12 @@ def remove_response(title):
     save_listening_responses(updated_responses)
     return updated_responses
 
+def delete_response(title):
+    responses = load_listening_responses()
+    updated_responses = [r for r in responses if r["title"] != title]
+    save_listening_responses(updated_responses)
+    return updated_responses
+
 def load_card_template():
     with open(CARD_TEMPLATE_FILE, "r", encoding="utf-8") as file:
         return file.read()
@@ -79,10 +85,13 @@ if "listening_data" not in st.session_state:
 
 if "responding_data" not in st.session_state:
     st.session_state.responding_data = load_listening_responses()
+    
+if "days_input" not in st.session_state:
+    st.session_state.days_input = 2
 
 st.title("Dashboard")
 
-tab1, tab2, tab3 = st.tabs(["Responding", "Listening","Archive"])
+tab1, tab2, tab3 = st.tabs(["Responding", "Listening", "Archive"])
 
 # Responding
 with tab1:
@@ -90,24 +99,35 @@ with tab1:
     st.write("List of identified harmful narratives:")
 
     if st.button("Find Narratives"):
-        responding_data = get_responding_data()
+        responding_data = get_responding_data(st.session_state.days_input)
         st.session_state.responding_data = responding_data
         st.success("Narratives fetched successfully!")
+
     st.write("---")
 
+        
     if st.session_state.responding_data:
         card_template = load_card_template()
+        count = 0
         for narrative in st.session_state.responding_data:
             card_html = card_template.replace("{{ title }}", narrative['title']) \
-                                     .replace("{{ narrative }}", narrative['narrative']) \
-                                     .replace("{{ link }}", narrative['link']) \
-                                     .replace("{{ content }}", narrative['content'])
+                                    .replace("{{ narrative }}", narrative['narrative']) \
+                                    .replace("{{ link }}", narrative['link']) \
+                                    .replace("{{ content }}", narrative['content'])
 
             st.markdown(card_html, unsafe_allow_html=True)
 
-            # Archive button
-            if st.button("Archive", key=f"key_{narrative['title']}", on_click=remove_response, args=(narrative['title'],)):
-                st.session_state.dummy_flag = not st.session_state.get('dummy_flag', False)
+            col1, col2, col3, col4, col5, col6, col7 = st.columns([0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3])
+
+            with col1:
+                if st.button("Archive", key=f"archive_{narrative['title']}_{count}", on_click=remove_response, args=(narrative['title'],)):
+                    st.session_state.dummy_flag = not st.session_state.get('dummy_flag', False)
+                
+            with col2:
+                if st.button("Delete", key=f"delete_{narrative['title']}_{count}", on_click=delete_response, args=(narrative['title'],)):
+                    st.session_state.dummy_flag = not st.session_state.get('dummy_flag', False)
+                
+            count += 1
     else:
         st.write("No harmful narratives found yet. Please use the 'Find Narratives' button to search.")
 
@@ -116,13 +136,17 @@ with tab2:
     st.header("Listening")
 
     listening_data_str = "\n".join(st.session_state.listening_data)
-    
     user_input = st.text_area("Listening for:", listening_data_str)
     
     if st.button("Update List"):
         st.session_state.listening_data = user_input.split("\n")
         save_listening_tags(st.session_state.listening_data)
         st.success("List updated successfully!")
+
+    days_input = st.number_input("Enter number of days in the past to search:", min_value=0, max_value=365, value=2, step=1)
+    
+    st.session_state.days_input = days_input
+    st.write(f"Stored days_input in session state: {st.session_state.days_input}")
 
 # Archive:
 with tab3: 
