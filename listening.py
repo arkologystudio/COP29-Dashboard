@@ -1,6 +1,5 @@
 import os
 import json
-import openai
 from exa_py import Exa
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
@@ -13,10 +12,9 @@ LISTENING_RESPONSES_FILE = "listening_responses.json"
 
 exa = Exa(os.environ["EXA_API_KEY"])
 openai_api_key = os.environ["OPENAI_API_KEY"]
-openai.api_key = openai_api_key
+assistant_id = os.environ["ASSISTANT_ID"]
 client = OpenAI(api_key=openai_api_key)
 thread_id = None
-assistant_id = os.environ["ASSISTANT_ID"]
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
@@ -36,21 +34,25 @@ def save_listening_responses(responses):
         
 import json
 
+import json
+
 def parse_assistant_data(sync_cursor_page):
     messages_data = sync_cursor_page.data
     contents = []
 
     for message in messages_data:
-        for content_block in message.content:
-            try:
-                message_content = json.loads(content_block.text.value)
-                if isinstance(message_content, list):
-                    contents.extend(message_content)
-            except json.JSONDecodeError:
-                print("Content is not in JSON format or has invalid JSON structure.")
+        if message.role == "assistant":
+            for content_block in message.content:
+                try:
+                    message_content = json.loads(content_block.text.value)
+                    if isinstance(message_content, list):
+                        contents.extend(message_content)
+                except json.JSONDecodeError:
+                    print("Content is not in JSON format or has invalid JSON structure.")
 
     formatted_string = json.dumps(contents)
     return formatted_string
+
 
 
 def call_chatgpt_api(responding_data):
@@ -61,7 +63,7 @@ def call_chatgpt_api(responding_data):
     
     json_data = json.dumps(responding_data)
     
-    message = client.beta.threads.messages.create(
+    client.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
         content= json_data + ""
@@ -85,6 +87,7 @@ def call_chatgpt_api(responding_data):
             "content": "some content"
         }"""
     )
+    
     if run.status == 'completed': 
         messages = client.beta.threads.messages.list(
         thread_id=thread.id
@@ -92,8 +95,7 @@ def call_chatgpt_api(responding_data):
         print(messages)
     else:
         print(run.status)
-    
-    # print(f"messages: {messages}")
+        raise f"An error occurred: {str(run.status)}"
     
     parsed_messages = parse_assistant_data(messages)
     
