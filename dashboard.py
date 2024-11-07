@@ -52,6 +52,7 @@ def append_to_google_sheets(narrative):
     row_data = [
         narrative['title'],
         narrative['narrative'],
+        narrative['community'],
         narrative['link'],
         narrative['content'],
         datetime.date.today().strftime("%Y-%m-%d")
@@ -91,17 +92,34 @@ if "days_input" not in st.session_state:
 
 st.title("Dashboard")
 
-tab1, tab2, tab3 = st.tabs(["Responding", "Listening", "Archive"])
+tab1, tab2, tab3 = st.tabs(["Listen", "Narrative Artifacts", "Archive"])
 
-# Responding
+# Listening
 with tab1:
-    st.header("Responding")
-    st.write("List of identified harmful narratives:")
+    st.header("Listen")
+
+    listening_data_str = "\n".join(st.session_state.listening_data)
+    user_input = st.text_area("Enter list of search terms (one phrase per line):", listening_data_str, placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy",  height=160)
+    
+    if st.button("Update List"):
+        st.session_state.listening_data = user_input.split("\n")
+        save_listening_tags(st.session_state.listening_data)
+        st.success("List updated successfully!")
+
+    days_input = st.number_input("Enter number of days in the past to search:", min_value=0, max_value=365, value=7, step=1)
+    
+    st.session_state.days_input = days_input
+    st.write(f"Stored days_input in session state: {st.session_state.days_input}")
+
+# Results
+with tab2:
+    st.header("Narrative Artifacts")
+    st.write("List of narrative artifacts retrieved via neural search")
 
     if st.button("Find Narratives"):
         responding_data = get_responding_data(st.session_state.days_input)
         st.session_state.responding_data = responding_data
-        st.success("Narratives fetched successfully!")
+        st.success("Narrative artifacts fetched successfully")
 
     st.write("---")
 
@@ -112,6 +130,7 @@ with tab1:
         for narrative in st.session_state.responding_data:
             card_html = card_template.replace("{{ title }}", narrative['title']) \
                                     .replace("{{ narrative }}", narrative['narrative']) \
+                                    .replace("{{ community }}", narrative.get('community', 'N/A')) \
                                     .replace("{{ link }}", narrative['link']) \
                                     .replace("{{ content }}", narrative['content'])
 
@@ -129,27 +148,10 @@ with tab1:
                 
             count += 1
     else:
-        st.write("No harmful narratives found yet. Please use the 'Find Narratives' button to search.")
-
-# Listening
-with tab2:
-    st.header("Listening")
-
-    listening_data_str = "\n".join(st.session_state.listening_data)
-    user_input = st.text_area("Listening for:", listening_data_str)
-    
-    if st.button("Update List"):
-        st.session_state.listening_data = user_input.split("\n")
-        save_listening_tags(st.session_state.listening_data)
-        st.success("List updated successfully!")
-
-    days_input = st.number_input("Enter number of days in the past to search:", min_value=0, max_value=365, value=2, step=1)
-    
-    st.session_state.days_input = days_input
-    st.write(f"Stored days_input in session state: {st.session_state.days_input}")
+        st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
 
 # Archive:
 with tab3: 
-    st.header("Archived Responses")
+    st.header("Saved Responses")
     st.write("View the archived responses in the Google Sheet:")
     st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)

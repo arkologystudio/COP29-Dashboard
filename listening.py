@@ -13,6 +13,7 @@ LISTENING_RESPONSES_FILE = "listening_responses.json"
 exa = Exa(os.environ["EXA_API_KEY"])
 openai_api_key = os.environ["OPENAI_API_KEY"]
 assistant_id = os.environ["ASSISTANT_ID"]
+
 client = OpenAI(api_key=openai_api_key)
 thread_id = None
 
@@ -31,10 +32,6 @@ def load_listening_responses():
 def save_listening_responses(responses):
     with open(LISTENING_RESPONSES_FILE, "w", encoding="utf-8") as file:
         json.dump(responses, file, indent=4)
-        
-import json
-
-import json
 
 def parse_assistant_data(sync_cursor_page):
     messages_data = sync_cursor_page.data
@@ -54,7 +51,6 @@ def parse_assistant_data(sync_cursor_page):
     return formatted_string
 
 
-
 def call_chatgpt_api(responding_data):
     global thread_id
     if thread_id == None:
@@ -72,34 +68,21 @@ def call_chatgpt_api(responding_data):
     run = client.beta.threads.runs.create_and_poll(
         thread_id=thread.id,
         assistant_id=assistant_id,
-        instructions="""Process these incoming tweets. Extract the following from each:
-        1. Title: If none is provided, generate one based on the content.
-        2. Narrative: Identify the overarching narrative of the content. For example, "techno-solutionism."
-        3. Link: The link to the post.
-        4. Content: The content of the post.
-
-        Reply with a like-for-like array of the data you receive and nothing else. This array should be in the format of a json array but should be in raw text. Each post should be formatted as:
-
-        {
-            "title": "some title",
-            "narrative": "some narrative",
-            "link": "some link",
-            "content": "some content"
-        }"""
+        instructions=None
     )
     
     if run.status == 'completed': 
         messages = client.beta.threads.messages.list(
         thread_id=thread.id
         )
-        print(messages)
+        print("LLM Response: ", messages, "\n\n")
     else:
         print(run.status)
         raise f"An error occurred: {str(run.status)}"
     
     parsed_messages = parse_assistant_data(messages)
     
-    print(f"parsed messages: {parsed_messages}")
+    print(f"Parsed messages: {parsed_messages} \n\n")
 
     return parsed_messages
 
@@ -125,7 +108,7 @@ def get_responding_data(days):
         responding_data.append({
             "title": result.title if result.title else "No title",
             "link": result.url,
-            "content": result.text[:200]
+            "content": result.text[:300]
         })
 
     processed_data = call_chatgpt_api(responding_data)
