@@ -6,16 +6,13 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
-
+from config import LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, NARRATIVE_IDENTIFICATION_ASSISTANT
 
 # Load environment variables
 load_dotenv()
 exa = Exa(os.getenv("EXA_API_KEY"))
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-assistant_id = os.getenv("ASSISTANT_ID")
-
-# File paths
-LISTENING_TAGS_FILE = "listening_tags.json"
+assistant_id = NARRATIVE_IDENTIFICATION_ASSISTANT
 
 def load_json_file(file_path):
     try:
@@ -25,7 +22,7 @@ def load_json_file(file_path):
         return []
 
 def call_chatgpt_api(context):
-    """Call the OpenAI API for each tweet context individually."""
+    """Call the OpenAI API for each content context individually."""
     thread = client.beta.threads.create()
     client.beta.threads.messages.create(
         thread_id=thread.id,
@@ -57,13 +54,13 @@ import hashlib
 import streamlit as st
 
 def get_responding_data(days):
-    """Fetch and parse social media posts based on listening tags, yielding each parsed tweet individually."""
+    """Fetch and parse social media posts based on listening tags, yielding each parsed content individually."""
     tags = ", ".join(load_json_file(LISTENING_TAGS_FILE))
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     
     response = exa.search_and_contents(
         tags, num_results=5, use_autoprompt=True, include_domains=["x.com"],
-        category="tweet", text={"max_characters": 500}, highlights=True,
+        category="content", text={"max_characters": 500}, highlights=True,
         start_published_date=start_date
     )
     
@@ -71,7 +68,7 @@ def get_responding_data(days):
         st.session_state.processed_hashes = set()
     
     for result in response.results:
-        # Generate a unique hash for each tweet content
+        # Generate a unique hash for each content content
         content_hash = hashlib.md5(result.text[:300].encode()).hexdigest()
         
         # Skip duplicates across multiple function calls
@@ -79,18 +76,18 @@ def get_responding_data(days):
             continue
         st.session_state.processed_hashes.add(content_hash)
         
-        tweet_context = {
+        content_context = {
             "title": result.title or "No title",
             "link": result.url,
             "content": result.text
         }
         
         try:
-            parsed_data = call_chatgpt_api(tweet_context)
+            parsed_data = call_chatgpt_api(content_context)
             if parsed_data:
                 parsed_data["hash"] = content_hash  # Add the hash to parsed data
-                yield parsed_data  # Yield each parsed tweet individually with its hash
+                yield parsed_data  # Yield each parsed content individually with its hash
         except RuntimeError as e:
-            print(f"Failed to process tweet: {e}")
+            print(f"Failed to process content: {e}")
 
 
