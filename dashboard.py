@@ -168,7 +168,8 @@ if "days_input" not in st.session_state:
     st.session_state.days_input = 7
 
 st.title("COP29 Narrative Dashboard | Arkology Studio")
-st.subheader("For Rhizome 2024 /w Culture Hack Labs")
+st.subheader("Rhizome 2024 /w Culture Hack Labs")
+st.divider()
 
 tab1, tab2, tab3, tab4 = st.tabs(["Listen", "Search", "Respond", "Archive"])
 
@@ -310,6 +311,14 @@ with tab3:
     if not responses_data:
         st.write("No responses generated yet. Generate responses in the Search tab first.")
     else:
+        # Add Clear All button
+        if st.button("Clear All Responses", type="primary"):
+            # Clear the responses file
+            with open(NARRATIVE_RESPONSES_FILE, "w") as f:
+                json.dump([], f)
+            st.success("All responses cleared!")
+            st.rerun()
+            
         for entry in responses_data:
             with st.expander(f"🔍 {entry['original_post']['title']}", expanded=False):
                 # Display original post details
