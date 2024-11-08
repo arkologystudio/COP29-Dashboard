@@ -8,21 +8,13 @@ from openai import OpenAI
 import streamlit as st
 from config import LISTENING_TAGS_FILE, NARRATIVE_IDENTIFICATION_ASSISTANT
 
-# Load environment variables
-load_dotenv()
-
 # Initialize OpenAI client
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
-    raise ValueError("OPENAI_API_KEY environment variable is not set")
-client = OpenAI(api_key=api_key)
+client = OpenAI(api_key=st.secrets["openai"]["api_key"])
 assistant_id = NARRATIVE_IDENTIFICATION_ASSISTANT
 
 def get_exa_client():
     """Get or create Exa client instance"""
-    api_key = os.getenv("EXA_API_KEY")
-    if not api_key:
-        raise ValueError("EXA_API_KEY environment variable is not set")
+    api_key = st.session_state.get("exa_api_key") or st.secrets["exa"]["api_key"]
     return Exa(api_key)
 
 def load_json_file(file_path):
@@ -34,10 +26,7 @@ def load_json_file(file_path):
 
 def get_openai_client():
     """Get or create OpenAI client instance"""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set")
-    return OpenAI(api_key=api_key)
+    return OpenAI(api_key=st.secrets["openai"]["api_key"])
 
 def call_chatgpt_api(context):
     """Call the OpenAI API for each content context individually."""
