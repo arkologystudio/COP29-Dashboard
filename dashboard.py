@@ -32,10 +32,6 @@ def get_google_credentials():
     }
     return Credentials.from_service_account_info(credentials_dict, scopes=SCOPES)
 
-credentials = get_google_credentials()
-client = gspread.authorize(credentials) 
-sheet = client.open_by_key(SHEET_ID).sheet1
-responses_sheet = client.open_by_key(SHEET_ID).worksheet("Responses")  # Add new sheet for responses
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
@@ -184,12 +180,30 @@ def save_response_to_sheets(entry, response_idx):
     ]
     responses_sheet.append_row(row_data)
 
+def setup_google_sheets():
+    """Initialize connection to Google Sheets."""
+    global sheet, responses_sheet
+    try:
+        credentials = get_google_credentials()
+        gc = gspread.authorize(credentials)
+        
+        # Open the main spreadsheet and get the first worksheet
+        spreadsheet = gc.open_by_key(SHEET_ID)
+        sheet = spreadsheet.get_worksheet(0)  # First worksheet
+        responses_sheet = spreadsheet.get_worksheet(1)  # Second worksheet
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to setup Google Sheets: {str(e)}")
+        return False
+
 ###################
 ## STREAMLIT UI ##
 ###################
 
-# Initialize Google Sheets connection
-setup_google_sheets()
+# Initialize Google Sheets connection - only do this once when the app starts
+if 'sheets_initialized' not in st.session_state:
+    st.session_state.sheets_initialized = setup_google_sheets()
 
 if "listening_data" not in st.session_state:
     st.session_state.listening_data = load_listening_tags()
