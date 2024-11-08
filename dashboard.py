@@ -158,7 +158,7 @@ with tab2:
 
 # Archive:
 with tab3: 
-    st.header("Saved Responses")
+    st.header("Archive")
     st.write("View the archived responses in the Google Sheet:")
     st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)
 
