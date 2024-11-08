@@ -34,44 +34,21 @@ def get_google_credentials():
 
 
 def load_listening_tags():
-    if os.path.exists(LISTENING_TAGS_FILE):
-        try:
-            with open(LISTENING_TAGS_FILE, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except json.JSONDecodeError:
-            st.error(f"Error: {LISTENING_TAGS_FILE} contains invalid JSON. Resetting to an empty list.")
-            return []
-    return []
+    if 'listening_tags' not in st.session_state:
+        st.session_state.listening_tags = []
+    return st.session_state.listening_tags
 
 def save_listening_tags(tags_list):
-    with open(LISTENING_TAGS_FILE, "w", encoding="utf-8") as file:
-        json.dump(tags_list, file, indent=4)
+    st.session_state.listening_tags = tags_list
 
 def load_listening_responses():
-    if os.path.exists(LISTENING_RESULTS_FILE):
-        try:
-            with open(LISTENING_RESULTS_FILE, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except json.JSONDecodeError:
-            st.error(f"Error: {LISTENING_RESULTS_FILE} contains invalid JSON. Resetting to an empty list.")
-            return []
-    return []
+    if 'listening_responses' not in st.session_state:
+        st.session_state.listening_responses = []
+    return st.session_state.listening_responses
 
 def save_listening_responses(responses_list):
-    with open(LISTENING_RESULTS_FILE, "w", encoding="utf-8") as file:
-        json.dump(responses_list, file, indent=4)
+    st.session_state.listening_responses = responses_list
 
-def append_to_google_sheets(narrative):
-    row_data = [
-        narrative['hash'],
-        narrative['title'],
-        narrative['narrative'],
-        narrative['community'],
-        narrative['link'],
-        narrative['content'],
-        datetime.date.today().strftime("%Y-%m-%d")
-    ]
-    sheet.append_row(row_data)
 
 def delete_response(title):
     """Delete a narrative from session state based on title."""
@@ -116,35 +93,20 @@ def handle_generate_response(narrative, strategy):
         "responses": [response_obj] if res else []
     }
 
-    try:
-        with open(NARRATIVE_RESPONSES_FILE, "r") as f:
-            responses = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        responses = []
+    # Initialize responses in session state if not exists
+    if 'narrative_responses' not in st.session_state:
+        st.session_state.narrative_responses = []
     
     # Check if entry with this ID exists
-    existing_entry = next((item for item in responses if item["id"] == narrative["hash"]), None)
+    existing_entry = next((item for item in st.session_state.narrative_responses 
+                          if item["id"] == narrative["hash"]), None)
     if existing_entry:
         # Append new response to existing entry
         existing_entry["responses"].append(response_obj)
     else:
         # Add new entry
-        responses.append(response_entry)
-    
-    # Save updated responses
-    with open(NARRATIVE_RESPONSES_FILE, "w") as f:
-        json.dump(responses, f, indent=4)
+        st.session_state.narrative_responses.append(response_entry)
 
-def handle_archive(narrative):
-    """Handle archiving a narrative."""
-    if sheet is None and not setup_google_sheets():
-        st.error("Failed to setup Google Sheets connection")
-        return
-    append_to_google_sheets(narrative)
-    # Remove from narrative_results after archiving
-    st.session_state.narrative_results = [
-        n for n in st.session_state.narrative_results if n["hash"] != narrative["hash"]
-    ]
 
 def handle_delete(narrative):
     """Handle deleting a narrative."""
@@ -153,12 +115,10 @@ def handle_delete(narrative):
     ]
 
 def load_narrative_responses():
-    """Load responses from the narrative responses file."""
-    try:
-        with open(NARRATIVE_RESPONSES_FILE, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    """Load responses from session state."""
+    if 'narrative_responses' not in st.session_state:
+        st.session_state.narrative_responses = []
+    return st.session_state.narrative_responses
 
 def save_response_to_sheets(entry, response_idx):
     """Save a specific response to the Google Sheets responses worksheet."""
@@ -196,6 +156,44 @@ def setup_google_sheets():
     except Exception as e:
         st.error(f"Failed to setup Google Sheets: {str(e)}")
         return False
+
+def save_to_archive(narrative_data):
+    """Save narrative data to Google Sheets archive."""
+    try:
+        # Use existing sheets connection
+        if sheet is None and not setup_google_sheets():
+            st.error("Failed to setup Google Sheets connection")
+            return False
+            
+        # Prepare the row data
+        row_data = [
+            narrative_data.get("hash", ""),
+            narrative_data.get("title", ""),
+            narrative_data.get("narrative", ""),
+            narrative_data.get("community", ""),
+            narrative_data.get("link", ""),
+            narrative_data.get("content", ""),    
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestam     
+        ]
+        
+        # Append the row
+        sheet.append_row(row_data)
+        
+        # Mark as archived in session state
+        if 'archived_narratives' not in st.session_state:
+            st.session_state.archived_narratives = set()
+        st.session_state.archived_narratives.add(narrative_data.get("hash"))
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to save to archive: {str(e)}")
+        return False
+
+def is_archived(narrative_hash):
+    """Check if a narrative has been archived."""
+    if 'archived_narratives' not in st.session_state:
+        st.session_state.archived_narratives = set()
+    return narrative_hash in st.session_state.archived_narratives
 
 ###################
 ## STREAMLIT UI ##
@@ -238,7 +236,7 @@ with tab1:
             step=1
         )
 
-        listening_data_str = "\n".join(st.session_state.listening_data)
+        listening_data_str = "\n".join(load_listening_tags())
         temp_user_input = st.text_area(
             "Enter list of search terms (one phrase per line):", 
             listening_data_str, 
@@ -284,7 +282,7 @@ with tab2:
         st.session_state.narrative_results = []
         
         progress_container = st.empty()
-        with st.spinner('Fetching narratives...'):
+        with st.spinner('Searching narratives...'):
             for narrative in parse_narrative_artifact(st.session_state.days_input):
                 narrative_hash = hashlib.md5(f"{narrative['title']}_{narrative['link']}_{narrative['content']}".encode()).hexdigest()
                 if any(item.get("hash") == narrative_hash for item in st.session_state.narrative_results):
@@ -344,9 +342,13 @@ with tab2:
                 # Create sub-columns for Archive/Delete
                 act_col1, act_col2 = st.columns([0.5, 0.5])
                 with act_col1:
-                    if st.button("Archive", key=f"archive_{unique_suffix}", type="secondary"):
-                        handle_archive(narrative)
-                        st.rerun()
+                    if not is_archived(narrative["hash"]):
+                        if st.button("Save to archive", key=f"archive_{narrative['hash']}"):
+                            if save_to_archive(narrative):
+                                st.success("Saved to archive!")
+                                st.rerun()
+                    else:
+                        st.write("✓ Archived")
                 with act_col2:
                     if st.button("Remove", key=f"delete_{unique_suffix}", type="secondary"):
                         handle_delete(narrative)
@@ -363,9 +365,7 @@ with tab3:
     else:
         # Add Clear All button
         if st.button("Clear All Responses", type="primary"):
-            # Clear the responses file
-            with open(NARRATIVE_RESPONSES_FILE, "w") as f:
-                json.dump([], f)
+            st.session_state.narrative_responses = []
             st.success("All responses cleared!")
             st.rerun()
             

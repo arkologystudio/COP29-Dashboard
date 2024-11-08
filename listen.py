@@ -1,12 +1,11 @@
-import hashlib
-import os
 import json
+import hashlib
 from exa_py import Exa
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
-from config import LISTENING_TAGS_FILE, NARRATIVE_IDENTIFICATION_ASSISTANT
+from config import NARRATIVE_IDENTIFICATION_ASSISTANT
 
 # Initialize OpenAI client
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
@@ -16,13 +15,6 @@ def get_exa_client():
     """Get or create Exa client instance"""
     api_key = st.session_state.get("exa_api_key") or st.secrets["exa"]["api_key"]
     return Exa(api_key)
-
-def load_json_file(file_path):
-    try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
 
 def get_openai_client():
     """Get or create OpenAI client instance"""
@@ -62,12 +54,12 @@ import hashlib
 import streamlit as st
 
 def parse_narrative_artifact(days=7):
-    """Fetch and parse social media posts based on listening tags, yielding each parsed content individually."""
+    """Fetch and parse social media posts based on listening tags."""
     try:
-        # Initialize Exa client only when needed
         exa = get_exa_client()
         
-        tags = ", ".join(load_json_file(LISTENING_TAGS_FILE))
+        # Use session state directly instead of loading from file
+        tags = ", ".join(st.session_state.listening_tags)
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         
         response = exa.search_and_contents(
