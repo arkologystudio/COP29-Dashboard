@@ -11,7 +11,24 @@ from config import NARRATIVE_RESPONSES_FILE, SERVICE_ACCOUNT_FILE, SCOPES, SHEET
 from respond import generate_response
 
 # Setup Google Sheets
-credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+def get_google_credentials():
+    """Create service account credentials from secrets."""
+    service_account_info = st.secrets["google_sheets"]
+    credentials_dict = {
+        "type": "service_account",
+        "project_id": service_account_info["project_id"],
+        "private_key_id": service_account_info["private_key_id"],
+        "private_key": service_account_info["private_key"],
+        "client_email": service_account_info["client_email"],
+        "client_id": service_account_info["client_id"],
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": service_account_info["client_x509_cert_url"]
+    }
+    return Credentials.from_service_account_info(credentials_dict, scopes=SCOPES)
+
+credentials = get_google_credentials()
 client = gspread.authorize(credentials) 
 sheet = client.open_by_key(SHEET_ID).sheet1
 responses_sheet = client.open_by_key(SHEET_ID).worksheet("Responses")  # Add new sheet for responses

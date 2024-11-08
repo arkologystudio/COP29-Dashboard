@@ -4,4 +4,4 @@ __pycache__/
 .env
 venv/
 *.json
-
+.streamlit/secrets.toml
