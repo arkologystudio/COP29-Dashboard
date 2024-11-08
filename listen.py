@@ -12,7 +12,10 @@ from config import LISTENING_TAGS_FILE, NARRATIVE_IDENTIFICATION_ASSISTANT
 load_dotenv()
 
 # Initialize OpenAI client
-client = OpenAI()
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY environment variable is not set")
+client = OpenAI(api_key=api_key)
 assistant_id = NARRATIVE_IDENTIFICATION_ASSISTANT
 
 def get_exa_client():
