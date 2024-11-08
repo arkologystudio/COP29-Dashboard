@@ -32,8 +32,16 @@ def load_json_file(file_path):
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
+def get_openai_client():
+    """Get or create OpenAI client instance"""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is not set")
+    return OpenAI(api_key=api_key)
+
 def call_chatgpt_api(context):
     """Call the OpenAI API for each content context individually."""
+    client = get_openai_client()  # Get client when needed
     thread = client.beta.threads.create()
     client.beta.threads.messages.create(
         thread_id=thread.id,
