@@ -6,9 +6,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 import datetime
 import hashlib
-from dotenv import load_dotenv
 
-from config import NARRATIVE_RESPONSES_FILE, SERVICE_ACCOUNT_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, get_google_credentials
+from config import NARRATIVE_RESPONSES_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
 from respond import generate_response
 
 # Add these global declarations at the top level
@@ -383,93 +382,14 @@ with tab4:
 with tab5:
     st.header("Configuration")
     
-    # Add config file upload option
-    st.subheader("Upload Configuration File")
-    st.write("Upload a text file containing your configuration in .env format:")
-    config_file = st.file_uploader("Upload configuration file", type="txt")
-    if config_file:
-        # Read and parse the config file
-        config_contents = config_file.read().decode()
-        # Create a temporary .env file
-        with open(".env.temp", "w") as f:
-            f.write(config_contents)
-        # Load the environment variables
-        load_dotenv(".env.temp")
-        # Clean up
-        os.remove(".env.temp")
-        
-        # Update session state with new values
-        st.session_state["exa_api_key"] = os.getenv("EXA_API_KEY", "")
-        st.session_state["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
-        st.session_state["sheet_id"] = os.getenv("GOOGLE_SHEET_ID", "")
-        try:
-            google_creds = json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{}"))
-            st.session_state["google_service_account"] = google_creds
-        except json.JSONDecodeError:
-            st.error("Invalid Google Service Account JSON in configuration file")
-        
-        st.success("Configuration loaded successfully!")
-
-    # Add example format
-    with st.expander("See example configuration format"):
-        st.code('''EXA_API_KEY="key_here"
-OPENAI_API_KEY="key_here"
-GOOGLE_SHEET_ID="id_here"
-GOOGLE_SERVICE_ACCOUNT_JSON='{
-    "type": "service_account",
-    "project_id": "your-project-id",
-    "private_key_id": "key_here",
-    "private_key": "-----BEGIN PRIVATE KEY-----\\nYOUR_KEY_HERE\\n-----END PRIVATE KEY-----\\n",
-    "client_email": "your-service-account-email",
-    "client_id": "your-client-id",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "your-cert-url",
-    "universe_domain": "googleapis.com"
-}''')
-
-    st.divider()
-    st.subheader("Manual Configuration")
-    
-    # OpenAI Configuration
-    openai_api_key = st.text_input(
-        "OpenAI API Key",
-        value=st.session_state.get("openai_api_key", ""),
-        type="password"
-    )
-    if openai_api_key:
-        st.session_state["openai_api_key"] = openai_api_key
-        os.environ["OPENAI_API_KEY"] = openai_api_key
-
     # Exa Configuration
     exa_api_key = st.text_input(
         "Exa API Key",
         value=st.session_state.get("exa_api_key", ""),
-        type="password"
+        type="password",
+        help="If provided, this will override the API key in secrets.toml"
     )
     if exa_api_key:
         st.session_state["exa_api_key"] = exa_api_key
         os.environ["EXA_API_KEY"] = exa_api_key
-
-    # Google Sheets Configuration
-    st.subheader("Google Sheets Settings")
-    
-    # Option 1: Upload service account JSON
-    service_account_json = st.file_uploader("Upload Google Service Account JSON", type="json")
-    if service_account_json:
-        service_account_dict = json.load(service_account_json)
-        st.session_state["google_service_account"] = service_account_dict
-    
-    # Option 2: Manual entry of sheet ID
-    sheet_id = st.text_input(
-        "Google Sheet ID",
-        value=st.session_state.get("sheet_id", SHEET_ID)
-    )
-    if sheet_id:
-        st.session_state["sheet_id"] = sheet_id
-
-    # Save configuration button
-    if st.button("Save Configuration"):
-        st.success("Configuration saved successfully!")
 

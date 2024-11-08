@@ -6,3 +6,4 @@ __pycache__/
 venv/
 *.json
 .streamlit/secrets.toml
+data/*
