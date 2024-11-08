@@ -59,7 +59,7 @@ def parse_narrative_artifact(days):
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
     
     response = exa.search_and_contents(
-        tags, num_results=5, use_autoprompt=True, include_domains=["x.com"],
+        tags, num_results=st.session_state.num_results, use_autoprompt=True, include_domains=["x.com"],
         category="content", text={"max_characters": 500}, highlights=True,
         start_published_date=start_date, 
     )
@@ -78,8 +78,6 @@ def parse_narrative_artifact(days):
         st.session_state.processed_hashes = set()
     
     for result in response.results:
-
-        print("Result: ",result)
 
         # Generate a unique hash for each content
         content_hash = hashlib.md5(result.text[:300].encode()).hexdigest()

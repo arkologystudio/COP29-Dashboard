@@ -72,7 +72,7 @@ def generate_unique_key(narrative, unique_suffix):
     base_key = f"{narrative['title']}_{narrative['link']}_{narrative['content']}"
     return hashlib.md5((base_key + unique_suffix).encode()).hexdigest()
 
-def Whyhandle_generate_response(narrative, strategy):
+def handle_generate_response(narrative, strategy):
     """Handle response generation for a narrative with specific strategy."""
     assistant_id = RESPONSE_STRATEGIES[strategy]
     res = generate_response(narrative, assistant_id)
@@ -175,18 +175,52 @@ tab1, tab2, tab3, tab4 = st.tabs(["Listen", "Search", "Respond", "Archive"])
 with tab1:
     st.header("Listening Model")
 
-    listening_data_str = "\n".join(st.session_state.listening_data)
-    user_input = st.text_area("Enter list of search terms (one phrase per line):", listening_data_str, placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", height=160)
-    
-    if st.button("Update List"):
-        st.session_state.listening_data = user_input.split("\n")
-        save_listening_tags(st.session_state.listening_data)
-        st.success("List updated successfully!")
+    # Store form inputs temporarily without triggering reloads
+    temp_num_results = st.slider(
+        "Number of results:", 
+        min_value=1, 
+        max_value=10, 
+        value=st.session_state.get('num_results', 5),
+        step=1,
+        key="temp_num_results"
+    )
 
-    days_input = st.number_input("Enter number of days in the past to search:", min_value=0, max_value=365, value=7, step=1)
+    listening_data_str = "\n".join(st.session_state.listening_data)
+    temp_user_input = st.text_area(
+        "Enter list of search terms (one phrase per line):", 
+        listening_data_str, 
+        placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", 
+        height=160,
+        key="temp_user_input"
+    )
     
-    st.session_state.days_input = days_input
-    st.write(f"Currently set to {st.session_state.days_input} days in the past.")
+    temp_days_input = st.number_input(
+        "Enter number of days in the past to search:", 
+        min_value=0, 
+        max_value=365, 
+        value=st.session_state.get('days_input', 7), 
+        step=1,
+        key="temp_days_input"
+    )
+    
+    # Single confirm button to save all changes
+    if st.button("Confirm Settings"):
+        st.session_state.num_results = temp_num_results
+        st.session_state.listening_data = temp_user_input.split("\n")
+        st.session_state.days_input = temp_days_input
+        
+        # Save to file
+        save_listening_tags(st.session_state.listening_data)
+        
+        st.success("All settings updated successfully!")
+        
+    # Display current settings
+    with st.expander("Current Settings"):
+        st.write(f"Number of results: {st.session_state.get('num_results', 5)}")
+        st.write(f"Days to search: {st.session_state.get('days_input', 7)}")
+        st.write("Search terms:")
+        for term in st.session_state.listening_data:
+            st.write(f"- {term}")
 
 # Results
 with tab2:
@@ -232,25 +266,36 @@ with tab2:
             st.markdown(card_html, unsafe_allow_html=True)
 
             unique_suffix = f"{narrative_idx}_{narrative['hash']}"
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if st.button("Archive", key=f"archive_{unique_suffix}"):
-                    handle_archive(narrative)
-                    st.rerun()
-            with col2:
-                if st.button("Delete", key=f"delete_{unique_suffix}"):
-                    handle_delete(narrative)
-                    st.rerun()
-            with col3:
-                strategy = st.selectbox(
-                    "Response Strategy",
-                    options=list(RESPONSE_STRATEGIES.keys()),
-                    key=f"strategy_{unique_suffix}"
-                )
-            with col4:
-                if st.button("Respond", key=f"respond_{unique_suffix}"):
-                    handle_generate_response(narrative, strategy)
-                    st.success("Response generated successfully!")
+            
+            # Create two columns with different widths (7:3 ratio)
+            left_col, right_col = st.columns([0.7, 0.3])
+            
+            with left_col:
+                # Create sub-columns for response controls with more balanced widths
+                resp_col1, resp_col2 = st.columns([0.3, 0.7])
+                with resp_col1:
+                    if st.button("Respond", key=f"respond_{unique_suffix}"):
+                        handle_generate_response(narrative, strategy)
+                        st.success("Response generated successfully!")
+                with resp_col2:
+                    strategy = st.selectbox(
+                        "Response Strategy",
+                        options=list(RESPONSE_STRATEGIES.keys()),
+                        key=f"strategy_{unique_suffix}",
+                        label_visibility="collapsed"
+                    )
+            
+            with right_col:
+                # Create sub-columns for Archive/Delete
+                act_col1, act_col2 = st.columns([0.5, 0.5])
+                with act_col1:
+                    if st.button("Archive", key=f"archive_{unique_suffix}", type="secondary"):
+                        handle_archive(narrative)
+                        st.rerun()
+                with act_col2:
+                    if st.button("Remove", key=f"delete_{unique_suffix}", type="secondary"):
+                        handle_delete(narrative)
+                        st.rerun()
     else:
         st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
 
