@@ -16,7 +16,7 @@ SHEET_ID = '1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M'
 
 # Assistant ID mappings for different response strategies
 RESPONSE_STRATEGIES = {
-    "Truth Query": "asst_MDjAUuSTMgphokc3v5BZLKCT",
+    "Truth Query": "asst_MqyR55qRVdZJPyodhQ4wpVqP",
     "Perspective Broadening": "asst_MDjAUuSTMgphokc3v5BZLKCT",
     "Combined": "asst_MDjAUuSTMgphokc3v5BZLKCT"  # You can update this ID as needed
 }
