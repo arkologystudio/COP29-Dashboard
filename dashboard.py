@@ -1,24 +1,41 @@
 import streamlit as st
 import os
 import json
-from listening import get_responding_data
+from listen import parse_narrative_artifact
 import gspread
 from google.oauth2.service_account import Credentials
 import datetime
+import hashlib
+from dotenv import load_dotenv
 
-# File paths
-LISTENING_TAGS_FILE = "listening_tags.json"
-LISTENING_RESPONSES_FILE = "listening_responses.json"
-CARD_TEMPLATE_FILE = "templates/response_card.html"
+from config import NARRATIVE_RESPONSES_FILE, SERVICE_ACCOUNT_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, get_google_credentials
+from respond import generate_response
 
-# Google Sheets setup
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-SERVICE_ACCOUNT_FILE = 'cop29-resources-archive-sheet-b1f6dc1221fa.json'
-SHEET_ID = '1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M'
+# Add these global declarations at the top level
+sheet = None
+responses_sheet = None
 
-credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-client = gspread.authorize(credentials)
-sheet = client.open_by_key(SHEET_ID).sheet1
+# Setup Google Sheets
+def setup_google_sheets():
+    """Setup Google Sheets with fallback options"""
+    global sheet, responses_sheet  # Ensure we're modifying global variables
+    try:
+        # Get credentials from config
+        creds_dict = get_google_credentials()
+        if creds_dict:
+            credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            client = gspread.authorize(credentials)
+            spreadsheet = client.open_by_key(SHEET_ID)
+            # Get both worksheets
+            sheet = spreadsheet.sheet1  # For narratives
+            responses_sheet = spreadsheet.worksheet("Responses")  # For responses
+            return True
+        else:
+            st.error("No Google Sheets credentials found. Please configure in Config tab or .env file")
+            return False
+    except Exception as e:
+        st.error(f"Error setting up Google Sheets: {str(e)}")
+        return False
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
@@ -35,121 +52,423 @@ def save_listening_tags(tags_list):
         json.dump(tags_list, file, indent=4)
 
 def load_listening_responses():
-    if os.path.exists(LISTENING_RESPONSES_FILE):
+    if os.path.exists(LISTENING_RESULTS_FILE):
         try:
-            with open(LISTENING_RESPONSES_FILE, "r", encoding="utf-8") as file:
+            with open(LISTENING_RESULTS_FILE, "r", encoding="utf-8") as file:
                 return json.load(file)
         except json.JSONDecodeError:
-            st.error(f"Error: {LISTENING_RESPONSES_FILE} contains invalid JSON. Resetting to an empty list.")
+            st.error(f"Error: {LISTENING_RESULTS_FILE} contains invalid JSON. Resetting to an empty list.")
             return []
     return []
 
 def save_listening_responses(responses_list):
-    with open(LISTENING_RESPONSES_FILE, "w", encoding="utf-8") as file:
+    with open(LISTENING_RESULTS_FILE, "w", encoding="utf-8") as file:
         json.dump(responses_list, file, indent=4)
 
 def append_to_google_sheets(narrative):
     row_data = [
+        narrative['hash'],
         narrative['title'],
         narrative['narrative'],
+        narrative['community'],
         narrative['link'],
         narrative['content'],
         datetime.date.today().strftime("%Y-%m-%d")
     ]
     sheet.append_row(row_data)
 
-def remove_response(title):
-    responses = load_listening_responses()
-    updated_responses = [r for r in responses if r["title"] != title]
-    
-    for narrative in responses:
-        if narrative["title"] == title:
-            append_to_google_sheets(narrative)
-            break
-
-    save_listening_responses(updated_responses)
-    return updated_responses
-
 def delete_response(title):
-    responses = load_listening_responses()
-    updated_responses = [r for r in responses if r["title"] != title]
-    save_listening_responses(updated_responses)
-    return updated_responses
+    """Delete a narrative from session state based on title."""
+    st.session_state.narrative_results = [
+        narrative for narrative in st.session_state.narrative_results if narrative["title"] != title
+    ]
+    st.success("Deleted successfully")
 
-def load_card_template():
-    with open(CARD_TEMPLATE_FILE, "r", encoding="utf-8") as file:
+def load_card_template(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
+
+def generate_unique_key(narrative, unique_suffix):
+    """Generate a truly unique key using a hash and a unique suffix."""
+    base_key = f"{narrative['title']}_{narrative['link']}_{narrative['content']}"
+    return hashlib.md5((base_key + unique_suffix).encode()).hexdigest()
+
+def handle_generate_response(narrative, strategy):
+    """Handle response generation for a narrative with specific strategy."""
+    assistant_id = RESPONSE_STRATEGIES[strategy]
+    res = generate_response(narrative, assistant_id)
+    print("LLM RESPONSE: ", res)
+    
+    # Create response object with strategy metadata
+    response_obj = {
+        "content": res,
+        "strategy": strategy,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    
+    # Create response entry with all narrative data
+    response_entry = {
+        "id": narrative["hash"],
+        "original_post": {
+            "title": narrative["title"],
+            "narrative": narrative["narrative"],
+            "community": narrative.get("community", "N/A"),
+            "link": narrative["link"],
+            "content": narrative["content"],
+            "date": datetime.date.today().strftime("%Y-%m-%d")
+        },
+        "responses": [response_obj] if res else []
+    }
+
+    try:
+        with open(NARRATIVE_RESPONSES_FILE, "r") as f:
+            responses = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        responses = []
+    
+    # Check if entry with this ID exists
+    existing_entry = next((item for item in responses if item["id"] == narrative["hash"]), None)
+    if existing_entry:
+        # Append new response to existing entry
+        existing_entry["responses"].append(response_obj)
+    else:
+        # Add new entry
+        responses.append(response_entry)
+    
+    # Save updated responses
+    with open(NARRATIVE_RESPONSES_FILE, "w") as f:
+        json.dump(responses, f, indent=4)
+
+def handle_archive(narrative):
+    """Handle archiving a narrative."""
+    if sheet is None and not setup_google_sheets():
+        st.error("Failed to setup Google Sheets connection")
+        return
+    append_to_google_sheets(narrative)
+    # Remove from narrative_results after archiving
+    st.session_state.narrative_results = [
+        n for n in st.session_state.narrative_results if n["hash"] != narrative["hash"]
+    ]
+
+def handle_delete(narrative):
+    """Handle deleting a narrative."""
+    st.session_state.narrative_results = [
+        n for n in st.session_state.narrative_results if n["hash"] != narrative["hash"]
+    ]
+
+def load_narrative_responses():
+    """Load responses from the narrative responses file."""
+    try:
+        with open(NARRATIVE_RESPONSES_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def save_response_to_sheets(entry, response_idx):
+    """Save a specific response to the Google Sheets responses worksheet."""
+    if responses_sheet is None and not setup_google_sheets():
+        st.error("Failed to setup Google Sheets connection")
+        return
+    id = entry["id"]
+    original_post = entry["original_post"]
+    response = entry["responses"][response_idx]
+
+    row_data = [
+        id,
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+        original_post["title"],
+        original_post["content"],
+        original_post["link"],
+        response["content"],
+        response["strategy"],
+    ]
+    responses_sheet.append_row(row_data)
+
+###################
+## STREAMLIT UI ##
+###################
+
+# Initialize Google Sheets connection
+setup_google_sheets()
 
 if "listening_data" not in st.session_state:
     st.session_state.listening_data = load_listening_tags()
 
-if "responding_data" not in st.session_state:
-    st.session_state.responding_data = load_listening_responses()
-    
 if "days_input" not in st.session_state:
-    st.session_state.days_input = 2
+    st.session_state.days_input = 7
 
-st.title("Dashboard")
+st.title("COP29 Narrative Dashboard | Arkology Studio")
+st.subheader("Rhizome 2024 /w Culture Hack Labs")
 
-tab1, tab2, tab3 = st.tabs(["Responding", "Listening", "Archive"])
 
-# Responding
-with tab1:
-    st.header("Responding")
-    st.write("List of identified harmful narratives:")
-
-    if st.button("Find Narratives"):
-        responding_data = get_responding_data(st.session_state.days_input)
-        st.session_state.responding_data = responding_data
-        st.success("Narratives fetched successfully!")
-
-    st.write("---")
-
-        
-    if st.session_state.responding_data:
-        card_template = load_card_template()
-        count = 0
-        for narrative in st.session_state.responding_data:
-            card_html = card_template.replace("{{ title }}", narrative['title']) \
-                                    .replace("{{ narrative }}", narrative['narrative']) \
-                                    .replace("{{ link }}", narrative['link']) \
-                                    .replace("{{ content }}", narrative['content'])
-
-            st.markdown(card_html, unsafe_allow_html=True)
-
-            col1, col2, col3, col4, col5, col6, col7 = st.columns([0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3])
-
-            with col1:
-                if st.button("Archive", key=f"archive_{narrative['title']}_{count}", on_click=remove_response, args=(narrative['title'],)):
-                    st.session_state.dummy_flag = not st.session_state.get('dummy_flag', False)
-                
-            with col2:
-                if st.button("Delete", key=f"delete_{narrative['title']}_{count}", on_click=delete_response, args=(narrative['title'],)):
-                    st.session_state.dummy_flag = not st.session_state.get('dummy_flag', False)
-                
-            count += 1
-    else:
-        st.write("No harmful narratives found yet. Please use the 'Find Narratives' button to search.")
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Listen", "Search", "Respond", "Archive", "Config"])
 
 # Listening
+with tab1:
+    st.header("Listening Model")
+    
+    # Create a form
+    with st.form(key="settings_form"):
+
+        if 'num_results' not in st.session_state:
+            st.session_state['num_results'] = 5
+        if 'days_input' not in st.session_state:
+            st.session_state['days_input'] = 7
+        
+        # All form inputs go here
+        temp_num_results = st.slider(
+            "Number of results:", 
+            min_value=1, 
+            max_value=10, 
+            value=st.session_state.get('num_results', 5),
+            step=1
+        )
+
+        listening_data_str = "\n".join(st.session_state.listening_data)
+        temp_user_input = st.text_area(
+            "Enter list of search terms (one phrase per line):", 
+            listening_data_str, 
+            placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", 
+            height=160
+        )
+        
+        temp_days_input = st.number_input(
+            "Enter number of days in the past to search:", 
+            min_value=0, 
+            max_value=365, 
+            value=st.session_state.get('days_input', 7), 
+            step=1
+        )
+        
+        # Form submit button
+        submit_button = st.form_submit_button("Confirm Settings")
+        
+        if submit_button:
+            st.session_state.num_results = temp_num_results
+            st.session_state.listening_data = temp_user_input.split("\n")
+            st.session_state.days_input = temp_days_input
+            
+            # Save to file
+            save_listening_tags(st.session_state.listening_data)
+            
+            st.success("All settings updated successfully!")
+    
+    # Display current settings outside the form
+    with st.expander("Current Settings"):
+        st.write(f"Number of results: {st.session_state.get('num_results', 5)}")
+        st.write(f"Days to search: {st.session_state.get('days_input', 7)}")
+        st.write("Search terms:")
+        for term in st.session_state.listening_data:
+            st.write(f"- {term}")
+
+# Results
 with tab2:
-    st.header("Listening")
+    st.header("Search & Review")
+    st.write("Search & review retrieved narrative artifacts")
 
-    listening_data_str = "\n".join(st.session_state.listening_data)
-    user_input = st.text_area("Listening for:", listening_data_str)
+    if st.button("Find Narratives"):
+        st.session_state.narrative_results = []
+        
+        progress_container = st.empty()
+        with st.spinner('Fetching narratives...'):
+            for narrative in parse_narrative_artifact(st.session_state.days_input):
+                narrative_hash = hashlib.md5(f"{narrative['title']}_{narrative['link']}_{narrative['content']}".encode()).hexdigest()
+                if any(item.get("hash") == narrative_hash for item in st.session_state.narrative_results):
+                    continue
+                
+                narrative["hash"] = narrative_hash
+                st.session_state.narrative_results.append(narrative)
+                
+                # Update progress message
+                progress_container.text(f"Processed {len(st.session_state.narrative_results)} artifacts ...")
+            
+            # Clear the progress message when done
+            progress_container.empty()
+            
+            if not st.session_state.narrative_results:
+                st.write("No new narratives found.")
+            st.rerun()  # Rerun to display the updated narratives in the main display section
     
-    if st.button("Update List"):
-        st.session_state.listening_data = user_input.split("\n")
-        save_listening_tags(st.session_state.listening_data)
-        st.success("List updated successfully!")
+    # Single display section for narratives
+    if "narrative_results" in st.session_state and st.session_state.narrative_results:
+        card_template = load_card_template(SEARCH_CARD_TEMPLATE_FILE)
+        for narrative_idx, narrative in enumerate(st.session_state.narrative_results):
+            card_html = card_template.replace("{{ title }}", narrative['title']) \
+                                    .replace("{{ narrative }}", narrative['narrative']) \
+                                    .replace("{{ community }}", narrative.get('community', 'N/A')) \
+                                    .replace("{{ link }}", narrative['link']) \
+                                    .replace("{{ content }}", narrative['content']) \
+                                    .replace("{{ favorite_count }}", narrative.get('favorite_count', 'N/A')) \
+                                    .replace("{{ reply_count }}", narrative.get('reply_count', 'N/A')) \
+                                    .replace("{{ quote_count }}", narrative.get('quote_count', 'N/A')) \
+                                    .replace("{{ retweet_count }}", narrative.get('retweet_count', 'N/A'))
+            st.markdown(card_html, unsafe_allow_html=True)
 
-    days_input = st.number_input("Enter number of days in the past to search:", min_value=0, max_value=365, value=2, step=1)
+            unique_suffix = f"{narrative_idx}_{narrative['hash']}"
+            
+            # Create two columns with different widths (7:3 ratio)
+            left_col, right_col = st.columns([0.7, 0.3])
+            
+            with left_col:
+                # Create sub-columns for response controls with more balanced widths
+                with st.form(key=f"response_form_{unique_suffix}"):
+                    resp_col1, resp_col2 = st.columns([0.3, 0.7])
+                    with resp_col2:
+                        strategy = st.selectbox(
+                            "Response Strategy",
+                            options=list(RESPONSE_STRATEGIES.keys()),
+                            key=f"strategy_{unique_suffix}",
+                            label_visibility="collapsed"
+                        )
+                    with resp_col1:
+                        submit_response = st.form_submit_button("Respond")
+                        if submit_response:
+                            handle_generate_response(narrative, strategy)
+                            st.success("Response generated successfully!")
+            
+            with right_col:
+                # Create sub-columns for Archive/Delete
+                act_col1, act_col2 = st.columns([0.5, 0.5])
+                with act_col1:
+                    if st.button("Archive", key=f"archive_{unique_suffix}", type="secondary"):
+                        handle_archive(narrative)
+                        st.rerun()
+                with act_col2:
+                    if st.button("Remove", key=f"delete_{unique_suffix}", type="secondary"):
+                        handle_delete(narrative)
+                        st.rerun()
+    else:
+        st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
+
+with tab3:
+    st.header("Respond")
     
-    st.session_state.days_input = days_input
-    st.write(f"Stored days_input in session state: {st.session_state.days_input}")
+    responses_data = load_narrative_responses()
+    if not responses_data:
+        st.write("No responses generated yet. Generate responses in the Search tab first.")
+    else:
+        # Add Clear All button
+        if st.button("Clear All Responses", type="primary"):
+            # Clear the responses file
+            with open(NARRATIVE_RESPONSES_FILE, "w") as f:
+                json.dump([], f)
+            st.success("All responses cleared!")
+            st.rerun()
+            
+        for entry in responses_data:
+            with st.expander(f"🔍 {entry['original_post']['title']}", expanded=False):
+                # Display original post details
+                st.markdown(f"**Original Content:** {entry['original_post']['content']}")
+                st.markdown(f"**Source:** [{entry['original_post']['link']}]({entry['original_post']['link']})")
+                
+                # Display responses
+                st.markdown("### Generated Responses")
+                for idx, response in enumerate(entry['responses']):
+                    with st.container():
+                        st.markdown("---")
+                        st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
+                        st.markdown(response['content'])
+                        if st.button("Save to Archive", key=f"save_{entry['id']}_{idx}"):
+                            save_response_to_sheets(entry, idx)
+                            st.success("Response saved to archive!")
 
 # Archive:
-with tab3: 
-    st.header("Archived Responses")
+with tab4: 
+    st.header("Archive")
     st.write("View the archived responses in the Google Sheet:")
     st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)
+
+# Add new Config tab at the end
+with tab5:
+    st.header("Configuration")
+    
+    # Add config file upload option
+    st.subheader("Upload Configuration File")
+    st.write("Upload a text file containing your configuration in .env format:")
+    config_file = st.file_uploader("Upload configuration file", type="txt")
+    if config_file:
+        # Read and parse the config file
+        config_contents = config_file.read().decode()
+        # Create a temporary .env file
+        with open(".env.temp", "w") as f:
+            f.write(config_contents)
+        # Load the environment variables
+        load_dotenv(".env.temp")
+        # Clean up
+        os.remove(".env.temp")
+        
+        # Update session state with new values
+        st.session_state["exa_api_key"] = os.getenv("EXA_API_KEY", "")
+        st.session_state["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
+        st.session_state["sheet_id"] = os.getenv("GOOGLE_SHEET_ID", "")
+        try:
+            google_creds = json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{}"))
+            st.session_state["google_service_account"] = google_creds
+        except json.JSONDecodeError:
+            st.error("Invalid Google Service Account JSON in configuration file")
+        
+        st.success("Configuration loaded successfully!")
+
+    # Add example format
+    with st.expander("See example configuration format"):
+        st.code('''EXA_API_KEY="key_here"
+OPENAI_API_KEY="key_here"
+GOOGLE_SHEET_ID="id_here"
+GOOGLE_SERVICE_ACCOUNT_JSON='{
+    "type": "service_account",
+    "project_id": "your-project-id",
+    "private_key_id": "key_here",
+    "private_key": "-----BEGIN PRIVATE KEY-----\\nYOUR_KEY_HERE\\n-----END PRIVATE KEY-----\\n",
+    "client_email": "your-service-account-email",
+    "client_id": "your-client-id",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "your-cert-url",
+    "universe_domain": "googleapis.com"
+}''')
+
+    st.divider()
+    st.subheader("Manual Configuration")
+    
+    # OpenAI Configuration
+    openai_api_key = st.text_input(
+        "OpenAI API Key",
+        value=st.session_state.get("openai_api_key", ""),
+        type="password"
+    )
+    if openai_api_key:
+        st.session_state["openai_api_key"] = openai_api_key
+        os.environ["OPENAI_API_KEY"] = openai_api_key
+
+    # Exa Configuration
+    exa_api_key = st.text_input(
+        "Exa API Key",
+        value=st.session_state.get("exa_api_key", ""),
+        type="password"
+    )
+    if exa_api_key:
+        st.session_state["exa_api_key"] = exa_api_key
+        os.environ["EXA_API_KEY"] = exa_api_key
+
+    # Google Sheets Configuration
+    st.subheader("Google Sheets Settings")
+    
+    # Option 1: Upload service account JSON
+    service_account_json = st.file_uploader("Upload Google Service Account JSON", type="json")
+    if service_account_json:
+        service_account_dict = json.load(service_account_json)
+        st.session_state["google_service_account"] = service_account_dict
+    
+    # Option 2: Manual entry of sheet ID
+    sheet_id = st.text_input(
+        "Google Sheet ID",
+        value=st.session_state.get("sheet_id", SHEET_ID)
+    )
+    if sheet_id:
+        st.session_state["sheet_id"] = sheet_id
+
+    # Save configuration button
+    if st.button("Save Configuration"):
+        st.success("Configuration saved successfully!")
+
