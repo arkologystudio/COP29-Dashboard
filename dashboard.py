@@ -167,54 +167,56 @@ if "listening_data" not in st.session_state:
 if "days_input" not in st.session_state:
     st.session_state.days_input = 7
 
-st.title("Dashboard")
+st.title("COP29 Narrative Dashboard | Arkology Studio")
+st.subheader("For Rhizome 2024 /w Culture Hack Labs")
 
 tab1, tab2, tab3, tab4 = st.tabs(["Listen", "Search", "Respond", "Archive"])
 
 # Listening
 with tab1:
     st.header("Listening Model")
-
-    # Store form inputs temporarily without triggering reloads
-    temp_num_results = st.slider(
-        "Number of results:", 
-        min_value=1, 
-        max_value=10, 
-        value=st.session_state.get('num_results', 5),
-        step=1,
-        key="temp_num_results"
-    )
-
-    listening_data_str = "\n".join(st.session_state.listening_data)
-    temp_user_input = st.text_area(
-        "Enter list of search terms (one phrase per line):", 
-        listening_data_str, 
-        placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", 
-        height=160,
-        key="temp_user_input"
-    )
     
-    temp_days_input = st.number_input(
-        "Enter number of days in the past to search:", 
-        min_value=0, 
-        max_value=365, 
-        value=st.session_state.get('days_input', 7), 
-        step=1,
-        key="temp_days_input"
-    )
+    # Create a form
+    with st.form(key="settings_form"):
+        # All form inputs go here
+        temp_num_results = st.slider(
+            "Number of results:", 
+            min_value=1, 
+            max_value=10, 
+            value=st.session_state.get('num_results', 5),
+            step=1
+        )
+
+        listening_data_str = "\n".join(st.session_state.listening_data)
+        temp_user_input = st.text_area(
+            "Enter list of search terms (one phrase per line):", 
+            listening_data_str, 
+            placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", 
+            height=160
+        )
+        
+        temp_days_input = st.number_input(
+            "Enter number of days in the past to search:", 
+            min_value=0, 
+            max_value=365, 
+            value=st.session_state.get('days_input', 7), 
+            step=1
+        )
+        
+        # Form submit button
+        submit_button = st.form_submit_button("Confirm Settings")
+        
+        if submit_button:
+            st.session_state.num_results = temp_num_results
+            st.session_state.listening_data = temp_user_input.split("\n")
+            st.session_state.days_input = temp_days_input
+            
+            # Save to file
+            save_listening_tags(st.session_state.listening_data)
+            
+            st.success("All settings updated successfully!")
     
-    # Single confirm button to save all changes
-    if st.button("Confirm Settings"):
-        st.session_state.num_results = temp_num_results
-        st.session_state.listening_data = temp_user_input.split("\n")
-        st.session_state.days_input = temp_days_input
-        
-        # Save to file
-        save_listening_tags(st.session_state.listening_data)
-        
-        st.success("All settings updated successfully!")
-        
-    # Display current settings
+    # Display current settings outside the form
     with st.expander("Current Settings"):
         st.write(f"Number of results: {st.session_state.get('num_results', 5)}")
         st.write(f"Days to search: {st.session_state.get('days_input', 7)}")
@@ -272,18 +274,20 @@ with tab2:
             
             with left_col:
                 # Create sub-columns for response controls with more balanced widths
-                resp_col1, resp_col2 = st.columns([0.3, 0.7])
-                with resp_col1:
-                    if st.button("Respond", key=f"respond_{unique_suffix}"):
-                        handle_generate_response(narrative, strategy)
-                        st.success("Response generated successfully!")
-                with resp_col2:
-                    strategy = st.selectbox(
-                        "Response Strategy",
-                        options=list(RESPONSE_STRATEGIES.keys()),
-                        key=f"strategy_{unique_suffix}",
-                        label_visibility="collapsed"
-                    )
+                with st.form(key=f"response_form_{unique_suffix}"):
+                    resp_col1, resp_col2 = st.columns([0.3, 0.7])
+                    with resp_col2:
+                        strategy = st.selectbox(
+                            "Response Strategy",
+                            options=list(RESPONSE_STRATEGIES.keys()),
+                            key=f"strategy_{unique_suffix}",
+                            label_visibility="collapsed"
+                        )
+                    with resp_col1:
+                        submit_response = st.form_submit_button("Respond")
+                        if submit_response:
+                            handle_generate_response(narrative, strategy)
+                            st.success("Response generated successfully!")
             
             with right_col:
                 # Create sub-columns for Archive/Delete
