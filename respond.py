@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
 
-from config import NARRATIVE_RESPONDER_ASSISTANT_1
 # Load environment variables
 load_dotenv()
 

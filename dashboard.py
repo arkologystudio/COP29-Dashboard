@@ -1,19 +1,20 @@
 import streamlit as st
 import os
 import json
-from listen import get_responding_data
+from listen import parse_narrative_artifact
 import gspread
 from google.oauth2.service_account import Credentials
 import datetime
 import hashlib
 
-from config import NARRATIVE_RESPONDER_ASSISTANT_1, NARRATIVE_RESPONSES_FILE, SERVICE_ACCOUNT_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, CARD_TEMPLATE_FILE
+from config import NARRATIVE_RESPONSES_FILE, SERVICE_ACCOUNT_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
 from respond import generate_response
 
 # Setup Google Sheets
 credentials = Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-client = gspread.authorize(credentials)
+client = gspread.authorize(credentials) 
 sheet = client.open_by_key(SHEET_ID).sheet1
+responses_sheet = client.open_by_key(SHEET_ID).worksheet("Responses")  # Add new sheet for responses
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
@@ -45,6 +46,7 @@ def save_listening_responses(responses_list):
 
 def append_to_google_sheets(narrative):
     row_data = [
+        narrative['hash'],
         narrative['title'],
         narrative['narrative'],
         narrative['community'],
@@ -56,13 +58,13 @@ def append_to_google_sheets(narrative):
 
 def delete_response(title):
     """Delete a narrative from session state based on title."""
-    st.session_state.responding_data = [
-        narrative for narrative in st.session_state.responding_data if narrative["title"] != title
+    st.session_state.narrative_results = [
+        narrative for narrative in st.session_state.narrative_results if narrative["title"] != title
     ]
     st.success("Deleted successfully")
 
-def load_card_template():
-    with open(CARD_TEMPLATE_FILE, "r", encoding="utf-8") as file:
+def load_card_template(file_path):
+    with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
 
 def generate_unique_key(narrative, unique_suffix):
@@ -70,15 +72,16 @@ def generate_unique_key(narrative, unique_suffix):
     base_key = f"{narrative['title']}_{narrative['link']}_{narrative['content']}"
     return hashlib.md5((base_key + unique_suffix).encode()).hexdigest()
 
-def handle_generate_response(narrative):
-    """Handle response generation for a narrative."""
-    res = generate_response(narrative, NARRATIVE_RESPONDER_ASSISTANT_1)
+def Whyhandle_generate_response(narrative, strategy):
+    """Handle response generation for a narrative with specific strategy."""
+    assistant_id = RESPONSE_STRATEGIES[strategy]
+    res = generate_response(narrative, assistant_id)
     print("LLM RESPONSE: ", res)
     
     # Create response object with strategy metadata
     response_obj = {
         "content": res,
-        "strategy": "default",  # Default strategy value
+        "strategy": strategy,
         "timestamp": datetime.datetime.now().isoformat()
     }
     
@@ -118,16 +121,41 @@ def handle_generate_response(narrative):
 def handle_archive(narrative):
     """Handle archiving a narrative."""
     append_to_google_sheets(narrative)
-    # Remove from responding_data after archiving
-    st.session_state.responding_data = [
-        n for n in st.session_state.responding_data if n["hash"] != narrative["hash"]
+    # Remove from narrative_results after archiving
+    st.session_state.narrative_results = [
+        n for n in st.session_state.narrative_results if n["hash"] != narrative["hash"]
     ]
 
 def handle_delete(narrative):
     """Handle deleting a narrative."""
-    st.session_state.responding_data = [
-        n for n in st.session_state.responding_data if n["hash"] != narrative["hash"]
+    st.session_state.narrative_results = [
+        n for n in st.session_state.narrative_results if n["hash"] != narrative["hash"]
     ]
+
+def load_narrative_responses():
+    """Load responses from the narrative responses file."""
+    try:
+        with open(NARRATIVE_RESPONSES_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def save_response_to_sheets(entry, response_idx):
+    """Save a specific response to the Google Sheets responses worksheet."""
+    id = entry["id"]
+    original_post = entry["original_post"]
+    response = entry["responses"][response_idx]
+
+    row_data = [
+        id,
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+        original_post["title"],
+        original_post["content"],
+        original_post["link"],
+        response["content"],
+        response["strategy"],
+    ]
+    responses_sheet.append_row(row_data)
 
 ###################
 ## STREAMLIT UI ##
@@ -166,32 +194,32 @@ with tab2:
     st.write("Search & review retrieved narrative artifacts")
 
     if st.button("Find Narratives"):
-        st.session_state.responding_data = []
+        st.session_state.narrative_results = []
         
         progress_container = st.empty()
         with st.spinner('Fetching narratives...'):
-            for narrative in get_responding_data(st.session_state.days_input):
+            for narrative in parse_narrative_artifact(st.session_state.days_input):
                 narrative_hash = hashlib.md5(f"{narrative['title']}_{narrative['link']}_{narrative['content']}".encode()).hexdigest()
-                if any(item.get("hash") == narrative_hash for item in st.session_state.responding_data):
+                if any(item.get("hash") == narrative_hash for item in st.session_state.narrative_results):
                     continue
                 
                 narrative["hash"] = narrative_hash
-                st.session_state.responding_data.append(narrative)
+                st.session_state.narrative_results.append(narrative)
                 
                 # Update progress message
-                progress_container.text(f"Processed {len(st.session_state.responding_data)} artifact ...")
+                progress_container.text(f"Processed {len(st.session_state.narrative_results)} artifacts ...")
             
             # Clear the progress message when done
             progress_container.empty()
             
-            if not st.session_state.responding_data:
+            if not st.session_state.narrative_results:
                 st.write("No new narratives found.")
             st.rerun()  # Rerun to display the updated narratives in the main display section
     
     # Single display section for narratives
-    if "responding_data" in st.session_state and st.session_state.responding_data:
-        card_template = load_card_template()
-        for narrative_idx, narrative in enumerate(st.session_state.responding_data):
+    if "narrative_results" in st.session_state and st.session_state.narrative_results:
+        card_template = load_card_template(SEARCH_CARD_TEMPLATE_FILE)
+        for narrative_idx, narrative in enumerate(st.session_state.narrative_results):
             card_html = card_template.replace("{{ title }}", narrative['title']) \
                                     .replace("{{ narrative }}", narrative['narrative']) \
                                     .replace("{{ community }}", narrative.get('community', 'N/A')) \
@@ -204,7 +232,7 @@ with tab2:
             st.markdown(card_html, unsafe_allow_html=True)
 
             unique_suffix = f"{narrative_idx}_{narrative['hash']}"
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 if st.button("Archive", key=f"archive_{unique_suffix}"):
                     handle_archive(narrative)
@@ -214,16 +242,41 @@ with tab2:
                     handle_delete(narrative)
                     st.rerun()
             with col3:
+                strategy = st.selectbox(
+                    "Response Strategy",
+                    options=list(RESPONSE_STRATEGIES.keys()),
+                    key=f"strategy_{unique_suffix}"
+                )
+            with col4:
                 if st.button("Respond", key=f"respond_{unique_suffix}"):
-                    handle_generate_response(narrative)
+                    handle_generate_response(narrative, strategy)
                     st.success("Response generated successfully!")
     else:
         st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
 
 with tab3:
     st.header("Respond")
-    st.write("Respond to the narrative artifacts")
-
+    
+    responses_data = load_narrative_responses()
+    if not responses_data:
+        st.write("No responses generated yet. Generate responses in the Search tab first.")
+    else:
+        for entry in responses_data:
+            with st.expander(f"🔍 {entry['original_post']['title']}", expanded=False):
+                # Display original post details
+                st.markdown(f"**Original Content:** {entry['original_post']['content']}")
+                st.markdown(f"**Source:** [{entry['original_post']['link']}]({entry['original_post']['link']})")
+                
+                # Display responses
+                st.markdown("### Generated Responses")
+                for idx, response in enumerate(entry['responses']):
+                    with st.container():
+                        st.markdown("---")
+                        st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
+                        st.markdown(response['content'])
+                        if st.button("Save to Archive", key=f"save_{entry['id']}_{idx}"):
+                            save_response_to_sheets(entry, idx)
+                            st.success("Response saved to archive!")
 
 # Archive:
 with tab4: 

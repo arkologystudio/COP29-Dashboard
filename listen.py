@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
-from config import LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, NARRATIVE_IDENTIFICATION_ASSISTANT
+from config import LISTENING_TAGS_FILE, NARRATIVE_IDENTIFICATION_ASSISTANT
 
 # Load environment variables
 load_dotenv()
@@ -53,7 +53,7 @@ def parse_assistant_data(messages):
 import hashlib
 import streamlit as st
 
-def get_responding_data(days):
+def parse_narrative_artifact(days):
     """Fetch and parse social media posts based on listening tags, yielding each parsed content individually."""
     tags = ", ".join(load_json_file(LISTENING_TAGS_FILE))
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
