@@ -6,9 +6,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 import datetime
 import hashlib
-from dotenv import load_dotenv
 
-from config import NARRATIVE_RESPONSES_FILE, SERVICE_ACCOUNT_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, get_google_credentials
+from config import NARRATIVE_RESPONSES_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
 from respond import generate_response
 
 # Add these global declarations at the top level
@@ -16,26 +15,23 @@ sheet = None
 responses_sheet = None
 
 # Setup Google Sheets
-def setup_google_sheets():
-    """Setup Google Sheets with fallback options"""
-    global sheet, responses_sheet  # Ensure we're modifying global variables
-    try:
-        # Get credentials from config
-        creds_dict = get_google_credentials()
-        if creds_dict:
-            credentials = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-            client = gspread.authorize(credentials)
-            spreadsheet = client.open_by_key(SHEET_ID)
-            # Get both worksheets
-            sheet = spreadsheet.sheet1  # For narratives
-            responses_sheet = spreadsheet.worksheet("Responses")  # For responses
-            return True
-        else:
-            st.error("No Google Sheets credentials found. Please configure in Config tab or .env file")
-            return False
-    except Exception as e:
-        st.error(f"Error setting up Google Sheets: {str(e)}")
-        return False
+def get_google_credentials():
+    """Create service account credentials from secrets."""
+    service_account_info = st.secrets["google_sheets"]
+    credentials_dict = {
+        "type": "service_account",
+        "project_id": service_account_info["project_id"],
+        "private_key_id": service_account_info["private_key_id"],
+        "private_key": service_account_info["private_key"],
+        "client_email": service_account_info["client_email"],
+        "client_id": service_account_info["client_id"],
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": service_account_info["client_x509_cert_url"]
+    }
+    return Credentials.from_service_account_info(credentials_dict, scopes=SCOPES)
+
 
 def load_listening_tags():
     if os.path.exists(LISTENING_TAGS_FILE):
@@ -184,12 +180,30 @@ def save_response_to_sheets(entry, response_idx):
     ]
     responses_sheet.append_row(row_data)
 
+def setup_google_sheets():
+    """Initialize connection to Google Sheets."""
+    global sheet, responses_sheet
+    try:
+        credentials = get_google_credentials()
+        gc = gspread.authorize(credentials)
+        
+        # Open the main spreadsheet and get the first worksheet
+        spreadsheet = gc.open_by_key(SHEET_ID)
+        sheet = spreadsheet.get_worksheet(0)  # First worksheet
+        responses_sheet = spreadsheet.get_worksheet(1)  # Second worksheet
+        
+        return True
+    except Exception as e:
+        st.error(f"Failed to setup Google Sheets: {str(e)}")
+        return False
+
 ###################
 ## STREAMLIT UI ##
 ###################
 
-# Initialize Google Sheets connection
-setup_google_sheets()
+# Initialize Google Sheets connection - only do this once when the app starts
+if 'sheets_initialized' not in st.session_state:
+    st.session_state.sheets_initialized = setup_google_sheets()
 
 if "listening_data" not in st.session_state:
     st.session_state.listening_data = load_listening_tags()
@@ -382,93 +396,14 @@ with tab4:
 with tab5:
     st.header("Configuration")
     
-    # Add config file upload option
-    st.subheader("Upload Configuration File")
-    st.write("Upload a text file containing your configuration in .env format:")
-    config_file = st.file_uploader("Upload configuration file", type="txt")
-    if config_file:
-        # Read and parse the config file
-        config_contents = config_file.read().decode()
-        # Create a temporary .env file
-        with open(".env.temp", "w") as f:
-            f.write(config_contents)
-        # Load the environment variables
-        load_dotenv(".env.temp")
-        # Clean up
-        os.remove(".env.temp")
-        
-        # Update session state with new values
-        st.session_state["exa_api_key"] = os.getenv("EXA_API_KEY", "")
-        st.session_state["openai_api_key"] = os.getenv("OPENAI_API_KEY", "")
-        st.session_state["sheet_id"] = os.getenv("GOOGLE_SHEET_ID", "")
-        try:
-            google_creds = json.loads(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "{}"))
-            st.session_state["google_service_account"] = google_creds
-        except json.JSONDecodeError:
-            st.error("Invalid Google Service Account JSON in configuration file")
-        
-        st.success("Configuration loaded successfully!")
-
-    # Add example format
-    with st.expander("See example configuration format"):
-        st.code('''EXA_API_KEY="key_here"
-OPENAI_API_KEY="key_here"
-GOOGLE_SHEET_ID="id_here"
-GOOGLE_SERVICE_ACCOUNT_JSON='{
-    "type": "service_account",
-    "project_id": "your-project-id",
-    "private_key_id": "key_here",
-    "private_key": "-----BEGIN PRIVATE KEY-----\\nYOUR_KEY_HERE\\n-----END PRIVATE KEY-----\\n",
-    "client_email": "your-service-account-email",
-    "client_id": "your-client-id",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "your-cert-url",
-    "universe_domain": "googleapis.com"
-}''')
-
-    st.divider()
-    st.subheader("Manual Configuration")
-    
-    # OpenAI Configuration
-    openai_api_key = st.text_input(
-        "OpenAI API Key",
-        value=st.session_state.get("openai_api_key", ""),
-        type="password"
-    )
-    if openai_api_key:
-        st.session_state["openai_api_key"] = openai_api_key
-        os.environ["OPENAI_API_KEY"] = openai_api_key
-
     # Exa Configuration
     exa_api_key = st.text_input(
         "Exa API Key",
         value=st.session_state.get("exa_api_key", ""),
-        type="password"
+        type="password",
+        help="If provided, this will override the API key in secrets.toml"
     )
     if exa_api_key:
         st.session_state["exa_api_key"] = exa_api_key
         os.environ["EXA_API_KEY"] = exa_api_key
-
-    # Google Sheets Configuration
-    st.subheader("Google Sheets Settings")
-    
-    # Option 1: Upload service account JSON
-    service_account_json = st.file_uploader("Upload Google Service Account JSON", type="json")
-    if service_account_json:
-        service_account_dict = json.load(service_account_json)
-        st.session_state["google_service_account"] = service_account_dict
-    
-    # Option 2: Manual entry of sheet ID
-    sheet_id = st.text_input(
-        "Google Sheet ID",
-        value=st.session_state.get("sheet_id", SHEET_ID)
-    )
-    if sheet_id:
-        st.session_state["sheet_id"] = sheet_id
-
-    # Save configuration button
-    if st.button("Save Configuration"):
-        st.success("Configuration saved successfully!")
 
