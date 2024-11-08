@@ -61,14 +61,27 @@ def get_responding_data(days):
     response = exa.search_and_contents(
         tags, num_results=5, use_autoprompt=True, include_domains=["x.com"],
         category="content", text={"max_characters": 500}, highlights=True,
-        start_published_date=start_date
+        start_published_date=start_date, 
     )
+
+    # Remove duplicates from search results based on URL
+    seen_urls = set()
+    unique_results = []
+    for result in response.results:
+        if result.url not in seen_urls:
+            seen_urls.add(result.url)
+            unique_results.append(result)
+    response.results = unique_results
+
     
     if "processed_hashes" not in st.session_state:
         st.session_state.processed_hashes = set()
     
     for result in response.results:
-        # Generate a unique hash for each content content
+
+        print("Result: ",result)
+
+        # Generate a unique hash for each content
         content_hash = hashlib.md5(result.text[:300].encode()).hexdigest()
         
         # Skip duplicates across multiple function calls
@@ -76,16 +89,22 @@ def get_responding_data(days):
             continue
         st.session_state.processed_hashes.add(content_hash)
         
-        content_context = {
-            "title": result.title or "No title",
-            "link": result.url,
+        llm_context = {
+            "title": result.title,
             "content": result.text
         }
         
         try:
-            parsed_data = call_chatgpt_api(content_context)
+            parsed_data = call_chatgpt_api(llm_context)
             if parsed_data:
+                # Combine metadata from exa with the LLM response
                 parsed_data["hash"] = content_hash  # Add the hash to parsed data
+                parsed_data['link'] = result.url
+                #parsed_data['content'] = result.text
+                parsed_data['favorite_count'] = getattr(result, 'favorite_count', '-')
+                parsed_data['reply_count'] = getattr(result, 'reply_count', '-') 
+                parsed_data['quote_count'] = getattr(result, 'quote_count', '-')
+                parsed_data['retweet_count'] = getattr(result, 'retweet_count', '-')
                 yield parsed_data  # Yield each parsed content individually with its hash
         except RuntimeError as e:
             print(f"Failed to process content: {e}")

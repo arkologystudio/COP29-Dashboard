@@ -115,6 +115,22 @@ def handle_generate_response(narrative):
     with open(NARRATIVE_RESPONSES_FILE, "w") as f:
         json.dump(responses, f, indent=4)
 
+def handle_archive(narrative):
+    """Handle archiving a narrative."""
+    append_to_google_sheets(narrative)
+    # Remove from responding_data after archiving
+    st.session_state.responding_data = [
+        n for n in st.session_state.responding_data if n["hash"] != narrative["hash"]
+    ]
+
+def handle_delete(narrative):
+    """Handle deleting a narrative."""
+    st.session_state.responding_data = [
+        n for n in st.session_state.responding_data if n["hash"] != narrative["hash"]
+    ]
+
+###################
+## STREAMLIT UI ##
 ###################
 
 if "listening_data" not in st.session_state:
@@ -125,7 +141,7 @@ if "days_input" not in st.session_state:
 
 st.title("Dashboard")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Listen", "Narrative Artifacts", "Respond", "Archive"])
+tab1, tab2, tab3, tab4 = st.tabs(["Listen", "Search", "Respond", "Archive"])
 
 # Listening
 with tab1:
@@ -150,50 +166,57 @@ with tab2:
     st.write("Search & review retrieved narrative artifacts")
 
     if st.button("Find Narratives"):
-        # Initialize or reset the responding data list in session state
-        if "responding_data" not in st.session_state:
-            st.session_state.responding_data = []
+        st.session_state.responding_data = []
         
-        # Placeholder to progressively display parsed narratives
-        response_placeholder = st.empty()
-        
-        for narrative in get_responding_data(st.session_state.days_input):
-            # Check if the narrative is already in responding_data by its unique content hash
-            narrative_hash = hashlib.md5(f"{narrative['title']}_{narrative['link']}_{narrative['content']}".encode()).hexdigest()
-            if any(item.get("hash") == narrative_hash for item in st.session_state.responding_data):
-                continue  # Skip if the narrative is already processed
+        progress_container = st.empty()
+        with st.spinner('Fetching narratives...'):
+            for narrative in get_responding_data(st.session_state.days_input):
+                narrative_hash = hashlib.md5(f"{narrative['title']}_{narrative['link']}_{narrative['content']}".encode()).hexdigest()
+                if any(item.get("hash") == narrative_hash for item in st.session_state.responding_data):
+                    continue
+                
+                narrative["hash"] = narrative_hash
+                st.session_state.responding_data.append(narrative)
+                
+                # Update progress message
+                progress_container.text(f"Processed {len(st.session_state.responding_data)} artifact ...")
             
-            # Add hash to narrative and append to session state
-            narrative["hash"] = narrative_hash
-            st.session_state.responding_data.append(narrative)
+            # Clear the progress message when done
+            progress_container.empty()
+            
+            if not st.session_state.responding_data:
+                st.write("No new narratives found.")
+            st.rerun()  # Rerun to display the updated narratives in the main display section
+    
+    # Single display section for narratives
+    if "responding_data" in st.session_state and st.session_state.responding_data:
+        card_template = load_card_template()
+        for narrative_idx, narrative in enumerate(st.session_state.responding_data):
+            card_html = card_template.replace("{{ title }}", narrative['title']) \
+                                    .replace("{{ narrative }}", narrative['narrative']) \
+                                    .replace("{{ community }}", narrative.get('community', 'N/A')) \
+                                    .replace("{{ link }}", narrative['link']) \
+                                    .replace("{{ content }}", narrative['content']) \
+                                    .replace("{{ favorite_count }}", narrative.get('favorite_count', 'N/A')) \
+                                    .replace("{{ reply_count }}", narrative.get('reply_count', 'N/A')) \
+                                    .replace("{{ quote_count }}", narrative.get('quote_count', 'N/A')) \
+                                    .replace("{{ retweet_count }}", narrative.get('retweet_count', 'N/A'))
+            st.markdown(card_html, unsafe_allow_html=True)
 
-            # Render each unique narrative card as it becomes available
-            with response_placeholder.container():
-                card_template = load_card_template()
-                for narrative_idx, narrative in enumerate(st.session_state.responding_data):
-                    card_html = card_template.replace("{{ title }}", narrative['title']) \
-                                             .replace("{{ narrative }}", narrative['narrative']) \
-                                             .replace("{{ community }}", narrative.get('community', 'N/A')) \
-                                             .replace("{{ link }}", narrative['link']) \
-                                             .replace("{{ content }}", narrative['content'])
-                    st.markdown(card_html, unsafe_allow_html=True)
-
-                    # Generate unique keys for each button using a timestamp to prevent re-use
-                    unique_suffix = f"{narrative_idx}_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-                    archive_key = generate_unique_key(narrative, unique_suffix + "_archive")
-                    delete_key = generate_unique_key(narrative, unique_suffix + "_delete")
-                    respond_key = generate_unique_key(narrative, unique_suffix + "_respond")
-                    # Display action buttons with truly unique keys
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        if st.button("Archive", key=archive_key, on_click=append_to_google_sheets, args=(narrative,)):
-                            st.success("Archived successfully")
-                    with col2:
-                        if st.button("Delete", key=delete_key, on_click=delete_response, args=(narrative['title'],)):
-                            st.success("Deleted successfully")
-                    with col3:
-                        if st.button("Respond", key=respond_key, on_click=handle_generate_response, args=(narrative,)):
-                            st.success("Responding to narrative")
+            unique_suffix = f"{narrative_idx}_{narrative['hash']}"
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("Archive", key=f"archive_{unique_suffix}"):
+                    handle_archive(narrative)
+                    st.rerun()
+            with col2:
+                if st.button("Delete", key=f"delete_{unique_suffix}"):
+                    handle_delete(narrative)
+                    st.rerun()
+            with col3:
+                if st.button("Respond", key=f"respond_{unique_suffix}"):
+                    handle_generate_response(narrative)
+                    st.success("Response generated successfully!")
     else:
         st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
 
