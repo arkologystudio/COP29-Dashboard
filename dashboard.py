@@ -178,8 +178,8 @@ if "listening_data" not in st.session_state:
 if "days_input" not in st.session_state:
     st.session_state.days_input = 7
 
-st.title("COP29 Narrative Dashboard | Arkology Studio")
-st.subheader("Rhizome 2024 /w Culture Hack Labs")
+st.title("Narrative Dashboard")
+st.subheader("Rhizome 2024 | Arkology Studio & Culture Hack Labs")
 
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Listen", "Search", "Respond", "Archive", "Config"])
