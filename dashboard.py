@@ -1,37 +1,15 @@
 import streamlit as st
 import os
-import json
+from database import setup_google_sheets
 from listen import parse_narrative_artifact
-import gspread
-from google.oauth2.service_account import Credentials
 import datetime
 import hashlib
 
-from config import NARRATIVE_RESPONSES_FILE, SCOPES, SHEET_ID, LISTENING_TAGS_FILE, LISTENING_RESULTS_FILE, SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
+from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
 from respond import generate_response
 
-# Add these global declarations at the top level
-sheet = None
+narrative_sheet = None
 responses_sheet = None
-
-# Setup Google Sheets
-def get_google_credentials():
-    """Create service account credentials from secrets."""
-    service_account_info = st.secrets["google_sheets"]
-    credentials_dict = {
-        "type": "service_account",
-        "project_id": service_account_info["project_id"],
-        "private_key_id": service_account_info["private_key_id"],
-        "private_key": service_account_info["private_key"],
-        "client_email": service_account_info["client_email"],
-        "client_id": service_account_info["client_id"],
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_x509_cert_url": service_account_info["client_x509_cert_url"]
-    }
-    return Credentials.from_service_account_info(credentials_dict, scopes=SCOPES)
-
 
 def load_listening_tags():
     if 'listening_tags' not in st.session_state:
@@ -60,11 +38,6 @@ def delete_response(title):
 def load_card_template(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
-
-def generate_unique_key(narrative, unique_suffix):
-    """Generate a truly unique key using a hash and a unique suffix."""
-    base_key = f"{narrative['title']}_{narrative['link']}_{narrative['content']}"
-    return hashlib.md5((base_key + unique_suffix).encode()).hexdigest()
 
 def handle_generate_response(narrative, strategy):
     """Handle response generation for a narrative with specific strategy."""
@@ -120,50 +93,53 @@ def load_narrative_responses():
         st.session_state.narrative_responses = []
     return st.session_state.narrative_responses
 
-def save_response_to_sheets(entry, response_idx):
-    """Save a specific response to the Google Sheets responses worksheet."""
-    if responses_sheet is None and not setup_google_sheets():
-        st.error("Failed to setup Google Sheets connection")
-        return
-    id = entry["id"]
-    original_post = entry["original_post"]
-    response = entry["responses"][response_idx]
-
-    row_data = [
-        id,
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-        original_post["title"],
-        original_post["content"],
-        original_post["link"],
-        response["content"],
-        response["strategy"],
-    ]
-    responses_sheet.append_row(row_data)
-
-def setup_google_sheets():
-    """Initialize connection to Google Sheets."""
-    global sheet, responses_sheet
-    try:
-        credentials = get_google_credentials()
-        gc = gspread.authorize(credentials)
-        
-        # Open the main spreadsheet and get the first worksheet
-        spreadsheet = gc.open_by_key(SHEET_ID)
-        sheet = spreadsheet.get_worksheet(0)  # First worksheet
-        responses_sheet = spreadsheet.get_worksheet(1)  # Second worksheet
-        
-        return True
-    except Exception as e:
-        st.error(f"Failed to setup Google Sheets: {str(e)}")
-        return False
-
-def save_to_archive(narrative_data):
-    """Save narrative data to Google Sheets archive."""
+def save_response_to_sheets(response_data):
+    """Save response data to Google Sheets archive."""
+    global responses_sheet
     try:
         # Use existing sheets connection
-        if sheet is None and not setup_google_sheets():
-            st.error("Failed to setup Google Sheets connection")
+        if responses_sheet is None:
+            from database import setup_google_sheets, responses_sheet as gs_responses_sheet
+            setup_google_sheets()
+            responses_sheet = gs_responses_sheet
+            
+        if responses_sheet is None:
+            st.error("Could not access Responses worksheet")
             return False
+            
+        # Debug print
+        print(f"Worksheet title: {responses_sheet.title}")
+        
+        # Prepare the row data
+        row_data = [
+            response_data.get("id", ""),
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+            response_data["original_post"]["title"],
+            response_data["original_post"]["content"],
+            response_data["original_post"]["link"],
+            response_data["responses"][0]["content"],
+            response_data["responses"][0]["strategy"],
+        ]
+
+        print("ROW DATA: ", row_data)
+        
+        responses_sheet.append_row(row_data)
+        return True
+    except Exception as e:
+        st.error(f"Failed to save to archive: {str(e)}")
+        return False
+
+def save_narrative_artifact_to_sheets(narrative_data):
+    """Save narrative data to Google Sheets archive."""
+    global narrative_sheet
+    try:
+        # Use existing sheets connection
+        if narrative_sheet is None:
+            from database import setup_google_sheets, narrative_sheet as gs_sheet
+            if not setup_google_sheets():
+                st.error("Failed to setup Google Sheets connection")
+                return False
+            narrative_sheet = gs_sheet
             
         # Prepare the row data
         row_data = [
@@ -177,7 +153,7 @@ def save_to_archive(narrative_data):
         ]
         
         # Append the row
-        sheet.append_row(row_data)
+        narrative_sheet.append_row(row_data)
         
         # Mark as archived in session state
         if 'archived_narratives' not in st.session_state:
@@ -344,7 +320,7 @@ with tab2:
                 with act_col1:
                     if not is_archived(narrative["hash"]):
                         if st.button("Save to archive", key=f"archive_{narrative['hash']}"):
-                            if save_to_archive(narrative):
+                            if save_narrative_artifact_to_sheets(narrative):
                                 st.success("Saved to archive!")
                                 st.rerun()
                     else:
@@ -382,8 +358,8 @@ with tab3:
                         st.markdown("---")
                         st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
                         st.markdown(response['content'])
-                        if st.button("Save to Archive", key=f"save_{entry['id']}_{idx}"):
-                            save_response_to_sheets(entry, idx)
+                        if st.button("Save Response", key=f"save_{entry['id']}_{idx}"):
+                            save_response_to_sheets(entry)
                             st.success("Response saved to archive!")
 
 # Archive:

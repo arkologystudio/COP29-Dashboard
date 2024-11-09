@@ -5,11 +5,10 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
-from config import NARRATIVE_IDENTIFICATION_ASSISTANT
 
 # Initialize OpenAI client
 client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-assistant_id = NARRATIVE_IDENTIFICATION_ASSISTANT
+assistant_id = st.secrets["openai"]["narrative_identification_assistant_id"] 
 
 def get_exa_client():
     """Get or create Exa client instance"""
