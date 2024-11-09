@@ -1,6 +1,7 @@
+import gspread
 import streamlit as st
 import os
-from database import setup_google_sheets, get_sheets
+from database import get_google_credentials, setup_google_sheets, get_sheets
 from listen import parse_narrative_artifact
 import datetime
 import hashlib
@@ -103,8 +104,6 @@ def save_response_to_sheets(response_data, idx):
             return False
             
         responses_sheet = sheets['responses']
-
-        print("RESPONSE DATA: ", response_data)
         
         # Prepare the row data
         row_data = [
@@ -117,8 +116,6 @@ def save_response_to_sheets(response_data, idx):
             response_data["responses"][idx]["strategy"],
         ]
 
-        print("ROW DATA: ", row_data)
-        
         responses_sheet.append_row(row_data)
         return True
     except Exception as e:
