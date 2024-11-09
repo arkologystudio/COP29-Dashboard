@@ -373,7 +373,17 @@ with tab5:
         type="password",
         help="If provided, this will override the API key in secrets.toml"
     )
-    if exa_api_key:
-        st.session_state["exa_api_key"] = exa_api_key
-        os.environ["EXA_API_KEY"] = exa_api_key
+    
+    if st.button("Confirm"):
+        if exa_api_key:
+            st.session_state["exa_api_key"] = exa_api_key
+            os.environ["EXA_API_KEY"] = exa_api_key
+            st.success("API key saved successfully!")
+        else:
+            # Remove the custom API key if the input is empty
+            if "exa_api_key" in st.session_state:
+                del st.session_state["exa_api_key"]
+            if "EXA_API_KEY" in os.environ:
+                del os.environ["EXA_API_KEY"]
+            st.info("Using default API key from secrets.toml")
 
