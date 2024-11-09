@@ -93,7 +93,7 @@ def load_narrative_responses():
         st.session_state.narrative_responses = []
     return st.session_state.narrative_responses
 
-def save_response_to_sheets(response_data):
+def save_response_to_sheets(response_data, idx):
     """Save response data to Google Sheets archive."""
     try:
         # Get fresh connection to sheets
@@ -104,18 +104,15 @@ def save_response_to_sheets(response_data):
             
         responses_sheet = sheets['responses']
         
-        # Debug print
-        print(f"Worksheet title: {responses_sheet.title}")
-        
         # Prepare the row data
         row_data = [
-            response_data.get("id", ""),
+            response_data["original_post"]["hash"],
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
             response_data["original_post"]["title"],
             response_data["original_post"]["content"],
             response_data["original_post"]["link"],
-            response_data["responses"][0]["content"],
-            response_data["responses"][0]["strategy"],
+            response_data["responses"][idx]["content"],
+            response_data["responses"][idx]["strategy"],
         ]
 
         print("ROW DATA: ", row_data)
@@ -355,7 +352,7 @@ with tab3:
                         st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
                         st.markdown(response['content'])
                         if st.button("Save Response", key=f"save_{entry['id']}_{idx}"):
-                            save_response_to_sheets(entry)
+                            save_response_to_sheets(entry, idx)
                             st.success("Response saved to archive!")
 
 # Archive:
