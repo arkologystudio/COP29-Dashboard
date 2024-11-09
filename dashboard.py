@@ -182,7 +182,7 @@ st.title("Narrative Dashboard")
 st.subheader("Rhizome 2024 | Arkology Studio & Culture Hack Labs")
 
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Listen", "Search", "Respond", "Archive", "Config"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Listen", "Search", "Responses", "Archive", "Config"])
 
 # Listening
 with tab1:
@@ -261,7 +261,7 @@ with tab2:
                 st.session_state.narrative_results.append(narrative)
                 
                 # Update progress message
-                progress_container.text(f"Processed {len(st.session_state.narrative_results)} artifacts ...")
+                progress_container.text(f"Processed {len(st.session_state.narrative_results)} of {st.session_state.num_results} artifacts ...")
             
             # Clear the progress message when done
             progress_container.empty()
@@ -288,12 +288,12 @@ with tab2:
             unique_suffix = f"{narrative_idx}_{narrative['hash']}"
             
             # Create two columns with different widths (7:3 ratio)
-            left_col, right_col = st.columns([0.7, 0.3])
+            left_col, right_col = st.columns([0.8, 0.2])
             
             with left_col:
                 # Create sub-columns for response controls with more balanced widths
                 with st.form(key=f"response_form_{unique_suffix}"):
-                    resp_col1, resp_col2 = st.columns([0.3, 0.7])
+                    resp_col1, resp_col2 = st.columns([0.4, 0.6])
                     with resp_col2:
                         strategy = st.selectbox(
                             "Response Strategy",
@@ -302,31 +302,40 @@ with tab2:
                             label_visibility="collapsed"
                         )
                     with resp_col1:
-                        submit_response = st.form_submit_button("Respond")
+                        submit_response = st.form_submit_button("Generate Response")
                         if submit_response:
                             handle_generate_response(narrative, strategy)
-                            st.success("Response generated successfully!")
+                            st.success("Success! See Responses tab.")
             
             with right_col:
-                # Create sub-columns for Archive/Delete
-                act_col1, act_col2 = st.columns([0.5, 0.5])
-                with act_col1:
-                    if not is_archived(narrative["hash"]):
-                        if st.button("Save to archive", key=f"archive_{narrative['hash']}"):
+
+                if not is_archived(narrative["hash"]):
+                        if st.button("Archive", key=f"archive_{narrative['hash']}"):
                             if save_narrative_artifact_to_sheets(narrative):
                                 st.success("Saved to archive!")
                                 st.rerun()
-                    else:
-                        st.write("✓ Archived")
-                with act_col2:
-                    if st.button("Remove", key=f"delete_{unique_suffix}", type="secondary"):
-                        handle_delete(narrative)
-                        st.rerun()
+                else:
+                    st.write("✓ Archived")
+
+                # Create sub-columns for Archive/Delete
+                # act_col1, act_col2 = st.columns([0.5, 0.5])
+                # with act_col1:
+                #     if not is_archived(narrative["hash"]):
+                #         if st.button("Save to archive", key=f"archive_{narrative['hash']}"):
+                #             if save_narrative_artifact_to_sheets(narrative):
+                #                 st.success("Saved to archive!")
+                #                 st.rerun()
+                #     else:
+                #         st.write("✓ Archived")
+                # with act_col2:
+                #     if st.button("Remove", key=f"delete_{unique_suffix}", type="secondary"):
+                #         handle_delete(narrative)
+                #         st.rerun()
     else:
         st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
 
 with tab3:
-    st.header("Respond")
+    st.header("Responses")
     
     responses_data = load_narrative_responses()
     if not responses_data:
