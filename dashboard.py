@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from database import setup_google_sheets
+from database import setup_google_sheets, get_sheets
 from listen import parse_narrative_artifact
 import datetime
 import hashlib
@@ -95,18 +95,15 @@ def load_narrative_responses():
 
 def save_response_to_sheets(response_data):
     """Save response data to Google Sheets archive."""
-    global responses_sheet
     try:
-        # Use existing sheets connection
-        if responses_sheet is None:
-            from database import setup_google_sheets, responses_sheet as gs_responses_sheet
-            setup_google_sheets()
-            responses_sheet = gs_responses_sheet
-            
-        if responses_sheet is None:
-            st.error("Could not access Responses worksheet")
+        # Get fresh connection to sheets
+        sheets = get_sheets()
+        if not sheets:
+            st.error("Could not access worksheets")
             return False
             
+        responses_sheet = sheets['responses']
+        
         # Debug print
         print(f"Worksheet title: {responses_sheet.title}")
         
@@ -131,16 +128,15 @@ def save_response_to_sheets(response_data):
 
 def save_narrative_artifact_to_sheets(narrative_data):
     """Save narrative data to Google Sheets archive."""
-    global narrative_sheet
     try:
-        # Use existing sheets connection
-        if narrative_sheet is None:
-            from database import setup_google_sheets, narrative_sheet as gs_sheet
-            if not setup_google_sheets():
-                st.error("Failed to setup Google Sheets connection")
-                return False
-            narrative_sheet = gs_sheet
+        # Get fresh connection to sheets
+        sheets = get_sheets()
+        if not sheets:
+            st.error("Could not access worksheets")
+            return False
             
+        narrative_sheet = sheets['narrative']
+        
         # Prepare the row data
         row_data = [
             narrative_data.get("hash", ""),

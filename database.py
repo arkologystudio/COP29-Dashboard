@@ -1,28 +1,30 @@
 import gspread
 import streamlit as st
 from google.oauth2.service_account import Credentials
+from functools import lru_cache
 
-narrative_sheet = None
-responses_sheet = None
-
-def setup_google_sheets():
-    """Initialize connection to Google Sheets."""
-    global narrative_sheet, responses_sheet
+@lru_cache(maxsize=1)
+def get_sheets():
+    """Get or create worksheet connections."""
     try:
         credentials = get_google_credentials()
         gc = gspread.authorize(credentials)
         
-        # Open the main spreadsheet and get the first worksheet
         SHEET_ID = st.secrets["google"]["sheet_id"]
         spreadsheet = gc.open_by_key(SHEET_ID)
-        narrative_sheet = spreadsheet.worksheet('Narrative Results')
-        responses_sheet = spreadsheet.worksheet('Responses') 
         
-        return True
+        return {
+            'narrative': spreadsheet.worksheet('Narrative Results'),
+            'responses': spreadsheet.worksheet('Responses')
+        }
     except Exception as e:
         st.error(f"Failed to setup Google Sheets: {str(e)}")
-        return False
-    
+        return None
+
+def setup_google_sheets():
+    """Initialize connection to Google Sheets."""
+    return get_sheets() is not None
+
 # Setup Google Sheets
 def get_google_credentials():
     """Create service account credentials from secrets."""
