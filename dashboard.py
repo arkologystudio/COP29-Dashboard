@@ -103,10 +103,12 @@ def save_response_to_sheets(response_data, idx):
             return False
             
         responses_sheet = sheets['responses']
+
+        print("RESPONSE DATA: ", response_data)
         
         # Prepare the row data
         row_data = [
-            response_data["original_post"]["hash"],
+            response_data["id"],
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
             response_data["original_post"]["title"],
             response_data["original_post"]["content"],
@@ -365,6 +367,7 @@ with tab4:
 with tab5:
     st.header("Configuration")
     
+    st.write("Set your own Exa API key here")
     # Exa Configuration
     exa_api_key = st.text_input(
         "Exa API Key",

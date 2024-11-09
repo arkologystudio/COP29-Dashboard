@@ -1,22 +1,13 @@
 import os
 import json
 
-from dotenv import load_dotenv
-from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
 
-# Load environment variables
-load_dotenv()
+from clients import get_openai_client
 
-def get_openai_client():
-    """Get or create OpenAI client instance"""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set")
-    return OpenAI(api_key=api_key)
 
-def invoke_assistant(context, assistant_id):
+def invoke_response_assistant(context, assistant_id):
     """Invoke the LLM Assistant with the given context."""
     client = get_openai_client()  # Get client when needed
     thread = client.beta.threads.create()
@@ -58,7 +49,7 @@ def generate_response(narrative, assistant_id):
     }
         
     try:
-        response = invoke_assistant(llm_context, assistant_id)
+        response = invoke_response_assistant(llm_context, assistant_id)
         if response:
             return response
             

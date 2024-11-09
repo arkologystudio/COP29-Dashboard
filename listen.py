@@ -6,20 +6,10 @@ from datetime import datetime, timedelta
 from openai import OpenAI
 import streamlit as st
 
-# Initialize OpenAI client
-client = OpenAI(api_key=st.secrets["openai"]["api_key"])
-assistant_id = st.secrets["openai"]["narrative_identification_assistant_id"] 
+from clients import get_exa_client, get_openai_client
 
-def get_exa_client():
-    """Get or create Exa client instance"""
-    api_key = st.session_state.get("exa_api_key") or st.secrets["exa"]["api_key"]
-    return Exa(api_key)
 
-def get_openai_client():
-    """Get or create OpenAI client instance"""
-    return OpenAI(api_key=st.secrets["openai"]["api_key"])
-
-def call_chatgpt_api(context):
+def invoke_identification_assistant(context):
     """Call the OpenAI API for each content context individually."""
     client = get_openai_client()  # Get client when needed
     thread = client.beta.threads.create()
@@ -28,6 +18,10 @@ def call_chatgpt_api(context):
         role="user",
         content=json.dumps(context)
     )
+
+    assistant_id = st.secrets["openai"]["narrative_identification_assistant_id"] 
+
+
     run = client.beta.threads.runs.create_and_poll(
         thread_id=thread.id,
         assistant_id=assistant_id,
@@ -96,7 +90,7 @@ def parse_narrative_artifact(days=7):
             }
             
             try:
-                parsed_data = call_chatgpt_api(llm_context)
+                parsed_data = invoke_identification_assistant(llm_context)
                 if parsed_data:
                     # Combine metadata from exa with the LLM response
                     parsed_data["hash"] = content_hash  # Add the hash to parsed data
