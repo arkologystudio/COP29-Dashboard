@@ -304,8 +304,9 @@ with tab2:
                     with resp_col1:
                         submit_response = st.form_submit_button("Generate Response")
                         if submit_response:
-                            handle_generate_response(narrative, strategy)
-                            st.success("Success! See Responses tab.")
+                            with st.spinner('Generating response...'):
+                                handle_generate_response(narrative, strategy)
+                                st.success("Success! See Responses tab.")
             
             with right_col:
 
@@ -342,7 +343,7 @@ with tab3:
         st.write("No responses generated yet. Generate responses in the Search tab first.")
     else:
         # Add Clear All button
-        if st.button("Clear All Responses", type="primary"):
+        if st.button("Clear All", type="secondary"):
             st.session_state.narrative_responses = []
             st.success("All responses cleared!")
             st.rerun()
@@ -361,8 +362,9 @@ with tab3:
                         st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
                         st.markdown(response['content'])
                         if st.button("Save Response", key=f"save_{entry['id']}_{idx}"):
-                            save_response_to_sheets(entry, idx)
-                            st.success("Response saved to archive!")
+                            with st.spinner('Saving response to archive...'):
+                                save_response_to_sheets(entry, idx)
+                                st.success("Response saved to archive!")
 
 # Archive:
 with tab4: 
