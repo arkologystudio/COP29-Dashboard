@@ -46,8 +46,9 @@ def parse_assistant_data(messages):
 import hashlib
 import streamlit as st
 
-def parse_narrative_artifact(days=7):
-    """Fetch and parse social media posts based on listening tags."""
+def search_narrative_artifacts(days=7):
+    """Search for narrative artifacts using Exa"""
+
     try:
         exa = get_exa_client()
         
@@ -56,9 +57,16 @@ def parse_narrative_artifact(days=7):
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
         
         response = exa.search_and_contents(
-            tags, num_results=st.session_state.num_results, use_autoprompt=True, include_domains=["x.com"],
-            category="content", text={"max_characters": 500}, highlights=True,
-            start_published_date=start_date, 
+            tags, 
+            num_results=st.session_state.num_results, 
+            type=st.session_state.search_type, 
+            use_autoprompt=st.session_state.use_autoprompt, 
+            include_domains=["x.com"],
+            category="tweet", 
+            text=True, 
+            highlights=False,
+            start_published_date=start_date,
+            livecrawl=st.session_state.livecrawl 
         )
 
         # Remove duplicates from search results based on URL
@@ -70,11 +78,19 @@ def parse_narrative_artifact(days=7):
                 unique_results.append(result)
         response.results = unique_results
 
+        return response.results
+    except RuntimeError as e:
+        print(f"Error searching for narrative artifacts: {e}")
+        return []
+
+def parse_narrative_artifact(exa_results):
+    """Parse narrative artifacts using the Narrative Identification Assistant."""
+    try:
         
         if "processed_hashes" not in st.session_state:
             st.session_state.processed_hashes = set()
         
-        for result in response.results:
+        for result in exa_results:
 
             # Generate a unique hash for each content
             content_hash = hashlib.md5(result.text[:300].encode()).hexdigest()
@@ -95,11 +111,7 @@ def parse_narrative_artifact(days=7):
                     # Combine metadata from exa with the LLM response
                     parsed_data["hash"] = content_hash  # Add the hash to parsed data
                     parsed_data['link'] = result.url
-                    #parsed_data['content'] = result.text
-                    parsed_data['favorite_count'] = getattr(result, 'favorite_count', '-')
-                    parsed_data['reply_count'] = getattr(result, 'reply_count', '-') 
-                    parsed_data['quote_count'] = getattr(result, 'quote_count', '-')
-                    parsed_data['retweet_count'] = getattr(result, 'retweet_count', '-')
+                    parsed_data['content'] = result.text
                     yield parsed_data  # Yield each parsed content individually with its hash
             except RuntimeError as e:
                 print(f"Failed to process content: {e}")

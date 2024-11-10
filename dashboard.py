@@ -2,7 +2,7 @@ import gspread
 import streamlit as st
 import os
 from database import get_google_credentials, setup_google_sheets, get_sheets
-from listen import parse_narrative_artifact
+from listen import parse_narrative_artifact, search_narrative_artifacts
 import datetime
 import hashlib
 
@@ -44,7 +44,6 @@ def handle_generate_response(narrative, strategy):
     """Handle response generation for a narrative with specific strategy."""
     assistant_id = RESPONSE_STRATEGIES[strategy]
     res = generate_response(narrative, assistant_id)
-    print("LLM RESPONSE: ", res)
     
     # Create response object with strategy metadata
     response_obj = {
@@ -190,13 +189,18 @@ with tab1:
     
     # Create a form
     with st.form(key="settings_form"):
-
         if 'num_results' not in st.session_state:
             st.session_state['num_results'] = 5
         if 'days_input' not in st.session_state:
             st.session_state['days_input'] = 7
+        if 'search_type' not in st.session_state:
+            st.session_state['search_type'] = 'neural'
+        if 'use_autoprompt' not in st.session_state:
+            st.session_state['use_autoprompt'] = True
+        if 'livecrawl' not in st.session_state:
+            st.session_state['livecrawl'] = None
         
-        # All form inputs go here
+        # Main form inputs
         temp_num_results = st.slider(
             "Number of results:", 
             min_value=1, 
@@ -210,7 +214,7 @@ with tab1:
             "Enter list of search terms (one phrase per line):", 
             listening_data_str, 
             placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", 
-            height=160
+            height=160,
         )
         
         temp_days_input = st.number_input(
@@ -220,6 +224,29 @@ with tab1:
             value=st.session_state.get('days_input', 7), 
             step=1
         )
+
+        # Advanced parameters in expander
+        with st.expander("Advanced Search Parameters"):
+
+            temp_use_autoprompt = st.checkbox(
+                "Use autoprompt",
+                value=st.session_state.get('use_autoprompt', True),
+                help="Automatically enhance the search query to improve results"
+            )
+            
+            temp_search_type = st.selectbox(
+                "Search type:",
+                options=["neural", "keyword", "auto"],
+                index=["neural", "keyword", "auto"].index(st.session_state.get('search_type', 'neural')),
+                help="neural: semantic search using embeddings, keyword: exact text match, auto: automatically choose best method"
+            )
+
+            temp_livecrawl = st.selectbox(
+                "Live crawl:",
+                options=[None, "always"],
+                index=[None, "always"].index(st.session_state.get('livecrawl', None)),
+                help="None: use cached results, always: fetch fresh results from source"
+            )
         
         # Form submit button
         submit_button = st.form_submit_button("Confirm Settings")
@@ -228,19 +255,14 @@ with tab1:
             st.session_state.num_results = temp_num_results
             st.session_state.listening_data = temp_user_input.split("\n")
             st.session_state.days_input = temp_days_input
+            st.session_state.search_type = temp_search_type
+            st.session_state.use_autoprompt = temp_use_autoprompt
+            st.session_state.livecrawl = temp_livecrawl
             
             # Save to file
             save_listening_tags(st.session_state.listening_data)
             
             st.success("All settings updated successfully!")
-    
-    # Display current settings outside the form
-    with st.expander("Current Settings"):
-        st.write(f"Number of results: {st.session_state.get('num_results', 5)}")
-        st.write(f"Days to search: {st.session_state.get('days_input', 7)}")
-        st.write("Search terms:")
-        for term in st.session_state.listening_data:
-            st.write(f"- {term}")
 
 # Results
 with tab2:
@@ -248,41 +270,45 @@ with tab2:
     st.write("Search & review retrieved narrative artifacts")
 
     if st.button("Find Narratives"):
-        st.session_state.narrative_results = []
+        # Initialize results list if it doesn't exist
+        if "narrative_results" not in st.session_state:
+            st.session_state.narrative_results = []
         
         progress_container = st.empty()
         with st.spinner('Searching narratives...'):
-            for narrative in parse_narrative_artifact(st.session_state.days_input):
-                narrative_hash = hashlib.md5(f"{narrative['title']}_{narrative['link']}_{narrative['content']}".encode()).hexdigest()
-                if any(item.get("hash") == narrative_hash for item in st.session_state.narrative_results):
-                    continue
-                
-                narrative["hash"] = narrative_hash
-                st.session_state.narrative_results.append(narrative)
+            # First search for artifacts
+            search_results = search_narrative_artifacts(days=st.session_state.days_input)
+            
+            # Track new narratives found in this search
+            new_narratives_found = False
+            
+            # Then parse each artifact
+            for narrative in parse_narrative_artifact(search_results):
+                # Check if this narrative is already in results
+                if not any(item.get("hash") == narrative["hash"] for item in st.session_state.narrative_results):
+                    st.session_state.narrative_results.append(narrative)
+                    new_narratives_found = True
                 
                 # Update progress message
-                progress_container.text(f"Processed {len(st.session_state.narrative_results)} of {st.session_state.num_results} artifacts ...")
+                progress_container.text(f"Processed {len(st.session_state.narrative_results)} narratives...")
             
             # Clear the progress message when done
             progress_container.empty()
             
-            if not st.session_state.narrative_results:
+            if not new_narratives_found:
                 st.write("No new narratives found.")
-            st.rerun()  # Rerun to display the updated narratives in the main display section
+            else:
+                st.rerun()  # Only rerun if we found new narratives
     
     # Single display section for narratives
     if "narrative_results" in st.session_state and st.session_state.narrative_results:
         card_template = load_card_template(SEARCH_CARD_TEMPLATE_FILE)
         for narrative_idx, narrative in enumerate(st.session_state.narrative_results):
             card_html = card_template.replace("{{ title }}", narrative['title']) \
-                                    .replace("{{ narrative }}", narrative['narrative']) \
+                                    .replace("{{ narrative }}", narrative.get('narrative', 'N/A')) \
                                     .replace("{{ community }}", narrative.get('community', 'N/A')) \
                                     .replace("{{ link }}", narrative['link']) \
-                                    .replace("{{ content }}", narrative['content']) \
-                                    .replace("{{ favorite_count }}", narrative.get('favorite_count', 'N/A')) \
-                                    .replace("{{ reply_count }}", narrative.get('reply_count', 'N/A')) \
-                                    .replace("{{ quote_count }}", narrative.get('quote_count', 'N/A')) \
-                                    .replace("{{ retweet_count }}", narrative.get('retweet_count', 'N/A'))
+                                    .replace("{{ content }}", narrative['content']) 
             st.markdown(card_html, unsafe_allow_html=True)
 
             unique_suffix = f"{narrative_idx}_{narrative['hash']}"
@@ -318,20 +344,6 @@ with tab2:
                 else:
                     st.write("✓ Archived")
 
-                # Create sub-columns for Archive/Delete
-                # act_col1, act_col2 = st.columns([0.5, 0.5])
-                # with act_col1:
-                #     if not is_archived(narrative["hash"]):
-                #         if st.button("Save to archive", key=f"archive_{narrative['hash']}"):
-                #             if save_narrative_artifact_to_sheets(narrative):
-                #                 st.success("Saved to archive!")
-                #                 st.rerun()
-                #     else:
-                #         st.write("✓ Archived")
-                # with act_col2:
-                #     if st.button("Remove", key=f"delete_{unique_suffix}", type="secondary"):
-                #         handle_delete(narrative)
-                #         st.rerun()
     else:
         st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
 
