@@ -189,7 +189,6 @@ with tab1:
     
     # Create a form
     with st.form(key="settings_form"):
-
         if 'num_results' not in st.session_state:
             st.session_state['num_results'] = 5
         if 'days_input' not in st.session_state:
@@ -201,7 +200,7 @@ with tab1:
         if 'livecrawl' not in st.session_state:
             st.session_state['livecrawl'] = None
         
-        # All form inputs go here
+        # Main form inputs
         temp_num_results = st.slider(
             "Number of results:", 
             min_value=1, 
@@ -226,22 +225,28 @@ with tab1:
             step=1
         )
 
-        temp_search_type = st.selectbox(
-            "Search type:",
-            options=["neural", "keyword", "auto"],
-            index=["neural", "keyword", "auto"].index(st.session_state.get('search_type', 'neural'))
-        )
+        # Advanced parameters in expander
+        with st.expander("Advanced Search Parameters"):
 
-        temp_use_autoprompt = st.checkbox(
-            "Use autoprompt",
-            value=st.session_state.get('use_autoprompt', True)
-        )
+            temp_use_autoprompt = st.checkbox(
+                "Use autoprompt",
+                value=st.session_state.get('use_autoprompt', True),
+                help="Automatically enhance the search query to improve results"
+            )
+            
+            temp_search_type = st.selectbox(
+                "Search type:",
+                options=["neural", "keyword", "auto"],
+                index=["neural", "keyword", "auto"].index(st.session_state.get('search_type', 'neural')),
+                help="neural: semantic search using embeddings, keyword: exact text match, auto: automatically choose best method"
+            )
 
-        temp_livecrawl = st.selectbox(
-            "Live crawl:",
-            options=[None, "always"],
-            index=[None, "always"].index(st.session_state.get('livecrawl', None))
-        )
+            temp_livecrawl = st.selectbox(
+                "Live crawl:",
+                options=[None, "always"],
+                index=[None, "always"].index(st.session_state.get('livecrawl', None)),
+                help="None: use cached results, always: fetch fresh results from source"
+            )
         
         # Form submit button
         submit_button = st.form_submit_button("Confirm Settings")
@@ -258,17 +263,6 @@ with tab1:
             save_listening_tags(st.session_state.listening_data)
             
             st.success("All settings updated successfully!")
-    
-    # Display current settings outside the form
-    with st.expander("Current Settings"):
-        st.write(f"Number of results: {st.session_state.get('num_results', 5)}")
-        st.write(f"Days to search: {st.session_state.get('days_input', 7)}")
-        st.write(f"Search type: {st.session_state.get('search_type', 'neural')}")
-        st.write(f"Use autoprompt: {st.session_state.get('use_autoprompt', True)}")
-        st.write(f"Live crawl: {st.session_state.get('livecrawl', None)}")
-        st.write("Search terms:")
-        for term in st.session_state.listening_data:
-            st.write(f"- {term}")
 
 # Results
 with tab2:
