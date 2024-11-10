@@ -276,29 +276,35 @@ with tab2:
     st.write("Search & review retrieved narrative artifacts")
 
     if st.button("Find Narratives"):
-        st.session_state.narrative_results = []
+        # Initialize results list if it doesn't exist
+        if "narrative_results" not in st.session_state:
+            st.session_state.narrative_results = []
         
         progress_container = st.empty()
         with st.spinner('Searching narratives...'):
             # First search for artifacts
             search_results = search_narrative_artifacts(days=st.session_state.days_input)
             
+            # Track new narratives found in this search
+            new_narratives_found = False
+            
             # Then parse each artifact
             for narrative in parse_narrative_artifact(search_results):
-                if any(item.get("hash") == narrative["hash"] for item in st.session_state.narrative_results):
-                    continue
-                
-                st.session_state.narrative_results.append(narrative)
+                # Check if this narrative is already in results
+                if not any(item.get("hash") == narrative["hash"] for item in st.session_state.narrative_results):
+                    st.session_state.narrative_results.append(narrative)
+                    new_narratives_found = True
                 
                 # Update progress message
-                progress_container.text(f"Processed {len(st.session_state.narrative_results)} of {st.session_state.num_results} artifacts ...")
+                progress_container.text(f"Processed {len(st.session_state.narrative_results)} narratives...")
             
             # Clear the progress message when done
             progress_container.empty()
             
-            if not st.session_state.narrative_results:
+            if not new_narratives_found:
                 st.write("No new narratives found.")
-            st.rerun()  # Rerun to display the updated narratives in the main display section
+            else:
+                st.rerun()  # Only rerun if we found new narratives
     
     # Single display section for narratives
     if "narrative_results" in st.session_state and st.session_state.narrative_results:
