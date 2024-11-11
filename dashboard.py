@@ -4,7 +4,6 @@ import os
 from database import get_google_credentials, setup_google_sheets, get_sheets
 from listen import parse_narrative_artefact, search_narrative_artefacts
 import datetime
-import hashlib
 
 from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
 from respond import generate_response
@@ -308,7 +307,8 @@ with tab2:
                                     .replace("{{ narrative }}", narrative.get('narrative', 'N/A')) \
                                     .replace("{{ community }}", narrative.get('community', 'N/A')) \
                                     .replace("{{ link }}", narrative['link']) \
-                                    .replace("{{ content }}", narrative['content']) 
+                                    .replace("{{ content }}", narrative['content']) \
+                                    .replace("{{ links_out }}", 'None' if not narrative.get('links_out') else ' '.join([f'<span style="border: 1px solid #e0e0e0; border-radius: 4px; padding: 2px 6px; margin: 0 4px;"><a href="{link}" style="color: #0066cc; text-decoration: none;">{link}</a></span>' for link in narrative.get('links_out', [])]))
             st.markdown(card_html, unsafe_allow_html=True)
 
             unique_suffix = f"{narrative_idx}_{narrative['hash']}"

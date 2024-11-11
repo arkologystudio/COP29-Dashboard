@@ -46,8 +46,8 @@ def parse_assistant_data(messages):
                 print("Error parsing assistant message content.")
     return {}
 
-def search_narrative_artifacts(days=7):
-    """Search for narrative artifacts using Exa"""
+def search_narrative_artefacts(days=7):
+    """Search for narrative artefacts using Exa"""
 
     try:
         exa = get_exa_client()
@@ -88,7 +88,7 @@ def search_narrative_artifacts(days=7):
         st.error(f"Validation Error: {ve}")
         return []
     except RuntimeError as e:
-        st.error(f"Error searching for narrative artifacts: {e}")
+        st.error(f"Error searching for narrative artefacts: {e}")
         return []
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
@@ -175,9 +175,9 @@ def scrape_html_from_url(url: str, headers: Optional[Dict[str, str]] = None, tim
     return None
 
 
-def parse_narrative_artifact(exa_results: Iterable[Any]) -> Iterable[Dict[str, Any]]:
+def parse_narrative_artefact(exa_results: Iterable[Any]) -> Iterable[Dict[str, Any]]:
     """
-    Parses narrative artifacts, extracts URLs from each result's text,
+    Parses narrative artefacts, extracts URLs from each result's text,
     resolves t.co redirects by parsing HTML content, scrapes HTML content from the final URLs,
     and enriches the data for LLM processing.
 
@@ -205,52 +205,68 @@ def parse_narrative_artifact(exa_results: Iterable[Any]) -> Iterable[Dict[str, A
         print("Found URLs: ", urls)
 
         urls_html_mapping = {}
+        
+        # Only process URLs if any were found
+        if urls:
+            for url in urls:
+                if url not in urls_html_mapping:  # Avoid duplicate scraping for the same URL
+                    original_url = url  # Keep track of the original URL
+                    final_url = url
 
-        for url in urls:
-            if url not in urls_html_mapping:  # Avoid duplicate scraping for the same URL
-                original_url = url  # Keep track of the original URL
-                final_url = url
-
-                # Resolve t.co redirects by parsing HTML content
-                if re.match(r'^https?://t\.co/\w+', url):
-                    redirected_url = scrape_html_from_url(url)
-                    if redirected_url:
-                        final_url = redirected_url
-                        # Handle multiple levels of t.co redirects
-                        while re.match(r'^https?://t\.co/\w+', final_url):
-                            print(f"Resolving second-level redirect for URL: {final_url}")
-                            next_redirected_url = scrape_html_from_url(final_url)
-                            if next_redirected_url and next_redirected_url != final_url:
-                                final_url = next_redirected_url
+                    # Resolve t.co redirects by parsing HTML content
+                    if re.match(r'^https?://t\.co/\w+', url):
+                        redirected_url = scrape_html_from_url(url)
+                        if redirected_url:
+                            final_url = redirected_url
+                            # Handle multiple levels of t.co redirects
+                            while re.match(r'^https?://t\.co/\w+', final_url):
+                                print(f"Resolving second-level redirect for URL: {final_url}")
+                                next_redirected_url = scrape_html_from_url(final_url)
+                                if next_redirected_url and next_redirected_url != final_url:
+                                    final_url = next_redirected_url
+                                else:
+                                    print(f"Failed to resolve further redirects for URL: {final_url}")
+                                    break
+                        else:
+                            print(f"Failed to resolve redirect for URL: {url}")
+                            urls_html_mapping[original_url] = "Failed to resolve redirect."
+                            continue
+                    # print("url html mapping: ", urls_html_mapping) 
+                    # For non-t.co links or resolved URLs, fetch the HTML content
+                    html_content = scrape_html_from_url(final_url)
+                    content = []
+                    
+                    # Add check for None before processing HTML
+                    if html_content:
+                        try:
+                            soup = BeautifulSoup(html_content, 'html.parser')
+                            if soup:  # Check if BeautifulSoup successfully created a soup object
+                                tags_to_extract = ['h1', 'h2', 'h3', 'h4', 'p']
+                                
+                                # Find all specified tags while preserving their order
+                                for element in soup.find_all(tags_to_extract):
+                                    content.append(element.get_text())
+                                print("Content: ", content)
                             else:
-                                print(f"Failed to resolve further redirects for URL: {final_url}")
-                                break
+                                print(f"BeautifulSoup failed to parse HTML for URL: {final_url}")
+                                urls_html_mapping[original_url] = "Failed to parse HTML content."
+                                continue
+                        except Exception as e:
+                            print(f"Error parsing HTML for URL {final_url}: {str(e)}")
+                            urls_html_mapping[original_url] = f"Error parsing HTML: {str(e)}"
+                            continue
+                    if html_content and not re.match(r'^https?://(twitter|x)\.com/', final_url):
+                        urls_html_mapping[original_url] = content
+                    elif re.match(r'^https?://(twitter|x)\.com/', final_url):
+                        # If the final URL is still a Twitter/X URL, skip scraping
+                        urls_html_mapping[original_url] = "Content is a Twitter/X page, not scraping HTML."
+                    elif final_url != original_url:
+                        # If the final URL is different and not a Twitter/X URL, store the final URL
+                        urls_html_mapping[original_url] = final_url
                     else:
-                        print(f"Failed to resolve redirect for URL: {url}")
-                        urls_html_mapping[original_url] = "Failed to resolve redirect."
-                        continue
-                print("url html mapping: ", urls_html_mapping) 
-                # For non-t.co links or resolved URLs, fetch the HTML content
-                html_content = scrape_html_from_url(final_url)
-                soup = BeautifulSoup(html_content, 'html.parser')
-                tags_to_extract = ['h1', 'h2', 'h3', 'h4', 'p']
-                content = []
-            
-                # Find all specified tags while preserving their order
-                for element in soup.find_all(tags_to_extract):
-                    # Optionally, you can prefix headings to distinguish them
-                    content.append(element.get_text())
-                print("Content: ", content)
-                if html_content and not re.match(r'^https?://(twitter|x)\.com/', final_url):
-                    urls_html_mapping[original_url] = content
-                elif re.match(r'^https?://(twitter|x)\.com/', final_url):
-                    # If the final URL is still a Twitter/X URL, skip scraping
-                    urls_html_mapping[original_url] = "Content is a Twitter/X page, not scraping HTML."
-                elif final_url != original_url:
-                    # If the final URL is different and not a Twitter/X URL, store the final URL
-                    urls_html_mapping[original_url] = final_url
-                else:
-                    urls_html_mapping[original_url] = "Failed to retrieve HTML."
+                        urls_html_mapping[original_url] = "Failed to retrieve HTML."
+        else:
+            print("No URLs found in text")
 
         # Generate a unique hash for each content based on the first 300 characters
         content_snippet = result.text[:300]
@@ -261,11 +277,13 @@ def parse_narrative_artifact(exa_results: Iterable[Any]) -> Iterable[Dict[str, A
             continue
         st.session_state.processed_hashes.add(content_hash)
 
+        print("urls_html_mapping: ", urls_html_mapping, "\n\n")
+
         # Prepare context for the LLM
         llm_context = {
             "title": result.title,
             "content": result.text,
-            "urls_html_mapping": urls_html_mapping  # Mapping between original URLs and their HTML or final URLs
+            "linked_content": urls_html_mapping  # Mapping between original URLs and their HTML or final URLs
         }
 
 
@@ -276,7 +294,9 @@ def parse_narrative_artifact(exa_results: Iterable[Any]) -> Iterable[Dict[str, A
                 parsed_data["hash"] = content_hash  # Add the hash to parsed data
                 parsed_data['link'] = result.url
                 parsed_data['content'] = result.text
-                parsed_data['links_out'] = list(urls_html_mapping.keys())  
+                # Filter out the original post URL from links_out
+                parsed_data['links_out'] = [url for url in urls_html_mapping.keys() if url != result.url]
+                parsed_data['linked_content'] = {url: f"[START CONTENT]\n{content}\n[END CONTENT]" if isinstance(content, (str, list)) else str(content) for url, content in urls_html_mapping.items()}
                 
                 yield parsed_data  # Yield each parsed content individually with its hash
         except RuntimeError as e:

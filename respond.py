@@ -45,8 +45,11 @@ def generate_response(narrative, assistant_id):
         "title": narrative['title'],
         "narrative": narrative['narrative'],
         "community": narrative['community'],
-        "content": narrative['content']
+        "content": narrative['content'],
+        "linked_content": narrative['linked_content']
     }
+
+    print("LLM CONTEXT: ", llm_context)
         
     try:
         response = invoke_response_assistant(llm_context, assistant_id)
