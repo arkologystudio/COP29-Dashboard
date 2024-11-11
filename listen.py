@@ -46,8 +46,8 @@ def parse_assistant_data(messages):
 import hashlib
 import streamlit as st
 
-def search_narrative_artifacts(days=7):
-    """Search for narrative artifacts using Exa"""
+def search_narrative_artefacts(days=7):
+    """Search for narrative artefacts using Exa"""
 
     try:
         exa = get_exa_client()
@@ -80,11 +80,11 @@ def search_narrative_artifacts(days=7):
 
         return response.results
     except RuntimeError as e:
-        print(f"Error searching for narrative artifacts: {e}")
+        print(f"Error searching for narrative artefacts: {e}")
         return []
 
-def parse_narrative_artifact(exa_results):
-    """Parse narrative artifacts using the Narrative Identification Assistant."""
+def parse_narrative_artefact(exa_results):
+    """Parse narrative artefacts using the Narrative Identification Assistant."""
     try:
         
         if "processed_hashes" not in st.session_state:
