@@ -2,7 +2,7 @@ import gspread
 import streamlit as st
 import os
 from database import get_google_credentials, setup_google_sheets, get_sheets
-from listen import parse_narrative_artifact, search_narrative_artifacts
+from listen import parse_narrative_artefact, search_narrative_artefacts
 import datetime
 import hashlib
 
@@ -122,7 +122,7 @@ def save_response_to_sheets(response_data, idx):
         st.error(f"Failed to save to archive: {str(e)}")
         return False
 
-def save_narrative_artifact_to_sheets(narrative_data):
+def save_narrative_artefact_to_sheets(narrative_data):
     """Save narrative data to Google Sheets archive."""
     try:
         # Get fresh connection to sheets
@@ -233,7 +233,7 @@ with tab1:
                 value=st.session_state.get('use_autoprompt', True),
                 help="Automatically enhance the search query to improve results"
             )
-            
+
             temp_search_type = st.selectbox(
                 "Search type:",
                 options=["neural", "keyword", "auto"],
@@ -262,12 +262,12 @@ with tab1:
             # Save to file
             save_listening_tags(st.session_state.listening_data)
             
-            st.success("All settings updated successfully!")
+            st.success("Listening model updated successfully")
 
 # Results
 with tab2:
     st.header("Search & Review")
-    st.write("Search & review retrieved narrative artifacts")
+    st.write("Search & review retrieved narrative artefacts")
 
     if st.button("Find Narratives"):
         # Initialize results list if it doesn't exist
@@ -276,14 +276,14 @@ with tab2:
         
         progress_container = st.empty()
         with st.spinner('Searching narratives...'):
-            # First search for artifacts
-            search_results = search_narrative_artifacts(days=st.session_state.days_input)
+            # First search for artefacts
+            search_results = search_narrative_artefacts(days=st.session_state.days_input)
             
             # Track new narratives found in this search
             new_narratives_found = False
             
-            # Then parse each artifact
-            for narrative in parse_narrative_artifact(search_results):
+            # Then parse each artefact
+            for narrative in parse_narrative_artefact(search_results):
                 # Check if this narrative is already in results
                 if not any(item.get("hash") == narrative["hash"] for item in st.session_state.narrative_results):
                     st.session_state.narrative_results.append(narrative)
@@ -338,14 +338,14 @@ with tab2:
 
                 if not is_archived(narrative["hash"]):
                         if st.button("Archive", key=f"archive_{narrative['hash']}"):
-                            if save_narrative_artifact_to_sheets(narrative):
+                            if save_narrative_artefact_to_sheets(narrative):
                                 st.success("Saved to archive!")
                                 st.rerun()
                 else:
                     st.write("✓ Archived")
 
     else:
-        st.write("No narrative artifacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artifacts.")
+        st.write("No narrative artefacts yet. Please refer to the Listen tab to set search criteria first, then use the 'Find Narratives' button to retrieve narrative artefacts.")
 
 with tab3:
     st.header("Responses")
