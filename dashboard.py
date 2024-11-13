@@ -644,7 +644,7 @@ with tab3:
 
                             # Flatten the list of hashtags if it's a list of lists
                             flat_hashtags = [hashtag for sublist in entry['hashtags'] for hashtag in sublist] if isinstance(entry['hashtags'][0], list) else entry['hashtags']
-                            st.markdown(", ".join(flat_hashtags))  # Ensure hashtags are displayed
+                            st.markdown(" ".join(flat_hashtags))  # Ensure hashtags are displayed
                         else:
                             with st.form(key=f"hashtag_form_{entry['id']}_{idx}"):
                                 st.markdown("No hashtags found")
