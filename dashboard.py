@@ -6,7 +6,7 @@ from listen import parse_narrative_artefact, search_narrative_artefacts
 import datetime
 import hashlib
 
-from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
+from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, LINK_MAPPING
 from respond import generate_response
 
 narrative_sheet = None
@@ -42,8 +42,29 @@ def load_card_template(file_path):
 
 def handle_generate_response(narrative, strategy):
     """Handle response generation for a narrative with specific strategy."""
+
     assistant_id = RESPONSE_STRATEGIES[strategy]
-    res = generate_response(narrative, assistant_id)
+    llm_context = {
+        "title": narrative['title'],
+        "narrative": narrative['narrative'],
+        "community": narrative['community'],
+        "content": narrative['content']
+    }
+    res = generate_response(assistant_id, llm_context)
+
+
+    link_assistant_id = st.secrets["openai"]["link_assistant_id"]
+    link_llm_context = {
+        "narrative": narrative['narrative'],
+    }
+
+    link_res = generate_response(link_assistant_id, link_llm_context)
+    print("LINK RES", link_res)
+    if link_res != 'NULL' and link_res.isdigit():
+        thread_link = LINK_MAPPING[int(link_res)]
+    else:
+        thread_link = None
+
     
     # Create response object with strategy metadata
     response_obj = {
@@ -61,8 +82,9 @@ def handle_generate_response(narrative, strategy):
             "community": narrative.get("community", "N/A"),
             "link": narrative["link"],
             "content": narrative["content"],
-            "date": datetime.date.today().strftime("%Y-%m-%d")
+            "date": datetime.date.today().strftime("%Y-%m-%d"),
         },
+        "thread_link": thread_link,
         "responses": [response_obj] if res else []
     }
 
@@ -266,8 +288,16 @@ with tab1:
 
 # Results
 with tab2:
+    
     st.header("Search & Review")
     st.write("Search & review retrieved narrative artefacts")
+
+    # Add checkbox for filtering insufficient context
+    show_sufficient_context = st.checkbox(
+        "Show narratives with sufficient context only",
+        value=False,
+        help="Filter to show only narratives that have been flagged as having sufficient context"
+    )
 
     if st.button("Find Narratives"):
         # Initialize results list if it doesn't exist
@@ -286,6 +316,8 @@ with tab2:
             for narrative in parse_narrative_artefact(search_results):
                 # Check if this narrative is already in results
                 if not any(item.get("hash") == narrative["hash"] for item in st.session_state.narrative_results):
+                    # Add insufficient_context flag to narrative
+                    narrative["insufficient_context"] = len(narrative.get("content", "").strip()) < 100
                     st.session_state.narrative_results.append(narrative)
                     new_narratives_found = True
                 
@@ -299,11 +331,19 @@ with tab2:
                 st.write("No new narratives found.")
             else:
                 st.rerun()  # Only rerun if we found new narratives
-    
+
+    # Filter results based on insufficient context checkbox
+    filtered_results = []
+    if "narrative_results" in st.session_state:
+        if show_sufficient_context:
+            filtered_results = [n for n in st.session_state.narrative_results if n.get("narrative") != "Insufficient Context"]
+        else:
+            filtered_results = st.session_state.narrative_results
+
     # Single display section for narratives
-    if "narrative_results" in st.session_state and st.session_state.narrative_results:
+    if filtered_results:
         card_template = load_card_template(SEARCH_CARD_TEMPLATE_FILE)
-        for narrative_idx, narrative in enumerate(st.session_state.narrative_results):
+        for narrative_idx, narrative in enumerate(filtered_results):
             card_html = card_template.replace("{{ title }}", narrative['title']) \
                                     .replace("{{ narrative }}", narrative.get('narrative', 'N/A')) \
                                     .replace("{{ community }}", narrative.get('community', 'N/A')) \
@@ -330,6 +370,7 @@ with tab2:
                     with resp_col1:
                         submit_response = st.form_submit_button("Generate Response")
                         if submit_response:
+                            
                             with st.spinner('Generating response...'):
                                 handle_generate_response(narrative, strategy)
                                 st.success("Success! See Responses tab.")
@@ -349,6 +390,7 @@ with tab2:
 
 with tab3:
     st.header("Responses")
+
     
     responses_data = load_narrative_responses()
     if not responses_data:
@@ -361,6 +403,7 @@ with tab3:
             st.rerun()
             
         for entry in responses_data:
+            print("Entry", entry)
             with st.expander(f"🔍 {entry['original_post']['title']}", expanded=False):
                 # Display original post details
                 st.markdown(f"**Original Content:** {entry['original_post']['content']}")
@@ -373,6 +416,7 @@ with tab3:
                         st.markdown("---")
                         st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
                         st.markdown(response['content'])
+                        st.markdown(entry['thread_link'])
                         if st.button("Save Response", key=f"save_{entry['id']}_{idx}"):
                             with st.spinner('Saving response to archive...'):
                                 save_response_to_sheets(entry, idx)
