@@ -682,7 +682,7 @@ with tab4:
             responses_sheet = sheets['responses']
             
             # Define expected headers
-            expected_headers = ['Title', 'Original Post', 'Response', 'Strategy', 'Link', 'Date', 
+            expected_headers = ['Title', 'Original Post', 'Response', 'Strategy', 'Link', 'Date', 'Hashtags', 'Thread',
                               'Reviewed (Ché)', 'Reviewed (Ross)', 'Reviewed (Cristina)', 'Reviewed (Adam)', 'Posted']
             responses = responses_sheet.get_all_records(expected_headers=expected_headers)
             
@@ -703,7 +703,11 @@ with tab4:
                         
                         st.markdown("**Response:**") 
                         st.write(response.get('Response', 'No response'))
-                        
+
+                        st.markdown("**Hashtags:**")
+                        st.write(response.get('Hashtags', 'No hashtags'))
+                        st.markdown("**Thread:**")
+                        st.write(response.get('Thread', 'No thread'))
                         st.markdown("**Strategy:**")
                         st.write(response.get('Strategy', 'No strategy'))
                         
