@@ -132,12 +132,7 @@ def save_response_to_sheets(response_data, idx):
             response_data["original_post"]["link"],
             response_data["responses"][idx]["content"],
             response_data["responses"][idx]["strategy"],
-            "FALSE",
-            "FALSE",
-            "FALSE",
-            "FALSE",
-            "FALSE",
-
+        
 
         ]
 
