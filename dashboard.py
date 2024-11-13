@@ -442,6 +442,8 @@ with tab3:
                         if entry['thread']:
                             st.markdown(entry['thread']['Topic'])
                             st.markdown(entry['thread']['Link'])
+                        else:
+                            st.markdown("No associated thread found")
 
                         # Button to save the updated response to sheets
                         if st.button("Save Response to Sheets", key=f"save_{entry['id']}_{idx}"):
