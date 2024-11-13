@@ -38,15 +38,10 @@ def parse_assistant_message(messages):
     return {}
 
 
-def generate_response(narrative, assistant_id):
+def generate_response(assistant_id, llm_context):
     """Construct the context and invoke the assistant."""
         
-    llm_context = {
-        "title": narrative['title'],
-        "narrative": narrative['narrative'],
-        "community": narrative['community'],
-        "content": narrative['content']
-    }
+ 
         
     try:
         response = invoke_response_assistant(llm_context, assistant_id)
