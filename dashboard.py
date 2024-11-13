@@ -225,7 +225,7 @@ def save_response_to_sheets(response_data, idx):
         hashtags = response_data.get("hashtags", [])
 
         # Join hashtags into a single string
-        hashtags_string = ', '.join(hashtags) if isinstance(hashtags, list) else hashtags
+        hashtags_string = ' '.join(hashtags) if isinstance(hashtags, list) else hashtags
         
         # Get the thread and ensure it's a string
         thread = response_data.get("thread", "")
