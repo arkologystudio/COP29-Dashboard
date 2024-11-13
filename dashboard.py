@@ -123,7 +123,7 @@ def save_response_to_sheets(response_data, idx):
             
         responses_sheet = sheets['responses']
         
-        # Prepare the row data
+        # Prepare the row data, ensuring no empty values
         row_data = [
             response_data["id"],
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
@@ -132,9 +132,10 @@ def save_response_to_sheets(response_data, idx):
             response_data["original_post"]["link"],
             response_data["responses"][idx]["content"],
             response_data["responses"][idx]["strategy"],
-        
-
         ]
+
+        # Filter out any None or empty string values
+        row_data = [value for value in row_data if value not in (None, '')]
 
         responses_sheet.append_row(row_data)
         return True
