@@ -133,7 +133,6 @@ def save_response_to_sheets(response_data, idx):
             response_data["responses"][idx]["content"],
             response_data["responses"][idx]["strategy"],
         ]
-
         # Filter out any None or empty string values
         row_data = [value for value in row_data if value not in (None, '')]
 
