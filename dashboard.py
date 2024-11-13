@@ -429,7 +429,6 @@ with tab3:
                         st.markdown("---")
                         st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
                         st.markdown(response['content'])
-                        st.markdown("---")
                         st.markdown("**Associated Thread**")
                         if entry['thread']:
                             st.markdown(entry['thread']['Topic'])
