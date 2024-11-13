@@ -36,10 +36,108 @@ def delete_response(title):
 def load_card_template(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
+    
+def handle_generate_thread(narrative):
+    try:    
+        link_assistant_id = st.secrets["openai"]["link_assistant_id"]
+        link_llm_context = {
+            "narrative": narrative,
+        }
+
+        link_res = generate_response(link_assistant_id, link_llm_context)
+        thread_data = load_thread_data_from_sheets()
+        
+        if link_res != 'NULL' and link_res.isdigit():
+            thread = next((thread for thread in thread_data if thread['Thread'] == ('Thread ' + str(link_res))), None)
+        else:
+            thread = None
+        
+        # Add thread to narrative state
+        if thread:
+            # Update the narrative_responses in session state
+            if 'narrative_responses' in st.session_state:
+                for idx, resp_entry in enumerate(st.session_state.narrative_responses):
+                    if resp_entry.get("id") == narrative["id"]:
+                        st.session_state.narrative_responses[idx]["thread"] = thread
+                        break
+                st.success("Thread generated successfully!")
+            else:
+                st.error("No narrative_responses found in session state.")
+        else:
+            st.warning("No matching thread found")
+            
+    except Exception as e:
+        st.error(f"Failed to generate thread: {str(e)}")
+
+
+
+def handle_generate_hashtags(entry):
+    """Generate and update hashtags for a given response entry."""
+    try:
+        # Check for required fields
+        if 'original_post' not in entry:
+            st.error("Entry is missing 'original_post'.")
+            return
+        if 'content' not in entry['original_post']:
+            st.error("Entry is missing 'content' in 'original_post'.")
+            return
+        if 'responses' not in entry:
+            st.error("Entry is missing 'responses'.")
+            return
+        if 'id' not in entry:
+            st.error("Entry is missing 'id'.")
+            return
+
+        # Access the content from the original post
+        original_content = entry['original_post']['content']
+        
+        # Access the responses
+        responses = entry['responses']
+
+        # Prepare context for hashtag generation
+        hashtag_assistant_id = st.secrets["openai"]["hashtag_assistant_id"]
+        
+        # Ensure that hashtag_assistant_id is a string
+        if not isinstance(hashtag_assistant_id, str):
+            st.error("Invalid assistant ID type. Expected a string.")
+            return
+        
+        hashtag_map = load_hashtag_data_from_sheets()
+        hashtag_llm_context = {
+            "context": {
+                "original post": original_content, 
+                "responses": [response['content'] for response in responses]  # Collecting all response contents
+            },
+            "hashtag_map": hashtag_map
+        }
+
+        hashtag_res = generate_response(hashtag_assistant_id, hashtag_llm_context)
+        if hashtag_res:
+            # Parse hashtag_res into list
+            try:
+                # Assuming hashtag_res is a string of hashtags separated by spaces or commas
+                hashtags = [hashtag.strip() for hashtag in hashtag_res.replace(',', ' ').split() if hashtag.startswith('#')]
+            except:
+                hashtags = []  # Fallback if parsing fails
+                
+            # Update the narrative_responses in session state
+            if 'narrative_responses' in st.session_state:
+                for idx, resp_entry in enumerate(st.session_state.narrative_responses):
+                    if resp_entry.get("id") == entry["id"]:
+                        st.session_state.narrative_responses[idx]["hashtags"] = hashtags
+                        break
+            else:
+                st.error("No narrative_responses found in session state.")
+            
+            st.success("Hashtags generated successfully!")
+
+
+
+    except Exception as e:
+        st.error(f"Failed to generate hashtags: {str(e)}")
 
 def handle_generate_response(narrative, strategy):
     """Handle response generation for a narrative with specific strategy."""
-
     assistant_id = RESPONSE_STRATEGIES[strategy]
     llm_context = {
         "title": narrative['title'],
@@ -49,20 +147,10 @@ def handle_generate_response(narrative, strategy):
     }
     res = generate_response(assistant_id, llm_context)
 
+    if not res:
+        st.error("Failed to generate a response.")
+        return
 
-    link_assistant_id = st.secrets["openai"]["link_assistant_id"]
-    link_llm_context = {
-        "narrative": narrative['narrative'],
-    }
-
-    link_res = generate_response(link_assistant_id, link_llm_context)
-    thread_data =  load_thread_data_from_sheets()
-    if link_res != 'NULL' and link_res.isdigit():
-        thread = next((thread for thread in thread_data if thread['Thread'] == ('Thread ' + str(link_res))), None)
-    else:
-        thread = None
-
-    
     # Create response object with strategy metadata
     response_obj = {
         "content": res,
@@ -72,7 +160,7 @@ def handle_generate_response(narrative, strategy):
     
     # Create response entry with all narrative data
     response_entry = {
-        "id": narrative["hash"],
+        "id": narrative["hash"],  # Standardizing 'id' to be the same as 'hash'
         "original_post": {
             "title": narrative["title"],
             "narrative": narrative["narrative"],
@@ -81,8 +169,9 @@ def handle_generate_response(narrative, strategy):
             "content": narrative["content"],
             "date": datetime.date.today().strftime("%Y-%m-%d"),
         },
-        "thread": thread,
-        "responses": [response_obj] if res else []
+        "responses": [response_obj],
+        "hashtags": narrative.get("hashtags", []),  # Ensure hashtags are included
+        "thread": narrative.get("thread", "")        # Ensure thread is included
     }
 
     # Initialize responses in session state if not exists
@@ -91,14 +180,17 @@ def handle_generate_response(narrative, strategy):
     
     # Check if entry with this ID exists
     existing_entry = next((item for item in st.session_state.narrative_responses 
-                          if item["id"] == narrative["hash"]), None)
+                          if item.get("id") == response_entry["id"]), None)
     if existing_entry:
         # Append new response to existing entry
         existing_entry["responses"].append(response_obj)
+        existing_entry["hashtags"] = response_entry["hashtags"]  # Update hashtags
+        existing_entry["thread"] = response_entry["thread"]      # Update thread
     else:
         # Add new entry
         st.session_state.narrative_responses.append(response_entry)
-
+    
+    st.success("Response generated successfully! Check the Responses tab.")
 
 def handle_delete(narrative):
     """Handle deleting a narrative."""
@@ -123,18 +215,41 @@ def save_response_to_sheets(response_data, idx):
             
         responses_sheet = sheets['responses']
         
-        # Prepare the row data, ensuring no empty values
+        # Prepare the row data, ensuring all fields are included
+        hashtags = response_data.get("hashtags", [])
+
+        # Join hashtags into a single string
+        hashtags_string = ', '.join(hashtags) if isinstance(hashtags, list) else hashtags
+        
+        # Get the thread and ensure it's a string
+        thread = response_data.get("thread", "")
+        if isinstance(thread, dict):
+            # If thread is a dictionary, convert it to a string representation
+            thread = f"Thread: {thread.get('Topic', 'N/A')} - Link: {thread.get('Link', 'N/A')}"
+        
+        # Prepare the row data, ensuring all fields are included in the correct order
         row_data = [
-            response_data["id"],
-            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-            response_data["original_post"]["title"],
-            response_data["original_post"]["content"],
-            response_data["original_post"]["link"],
-            response_data["responses"][idx]["content"],
-            response_data["responses"][idx]["strategy"],
+            response_data.get("id", ""),  # ID
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Date
+            response_data["original_post"].get("title", ""),  # Title
+            response_data["original_post"].get("content", ""),  # Original Post
+            response_data["original_post"].get("link", ""),  # Link
+            response_data["responses"][idx].get("content", ""),  # Response
+            response_data["responses"][idx].get("strategy", ""),  # Strategy
+            hashtags_string,  # Hashtags
+            thread,           # Thread
+            False,            # Reviewed (Ché)
+            False,            # Reviewed (Ross)
+            False,            # Reviewed (Cristina)
+            False,            # Reviewed (Adam)
+            False,            # Posted?
+            0,                # View Count (at time of response)
+            0,                # Like Count (at time of response)
+            0                 # Retweet Count (at time of response)
         ]
-        # Filter out any None or empty string values
-        row_data = [value for value in row_data if value not in (None, '')]
+        
+        # Debugging: Print the row data before appending
+        print("Row Data to Append:", row_data)
 
         responses_sheet.append_row(row_data)
         return True
@@ -156,6 +271,19 @@ def load_thread_data_from_sheets():
         st.error(f"Failed to load from archive: {str(e)}")
         return None
 
+def load_hashtag_data_from_sheets():
+    """Load data from Google Sheets archive."""         
+    try:
+        sheets = get_sheets()
+        if not sheets:
+            st.error("Could not access worksheets")
+            return None
+        hashtag_sheet = sheets['hashtags']
+        hashtag_records = hashtag_sheet.get_all_records()
+        return hashtag_records
+    except Exception as e:
+        st.error(f"Failed to load from archive: {str(e)}")
+        return None
 
 def save_narrative_artefact_to_sheets(narrative_data):
     """Save narrative data to Google Sheets archive."""
@@ -176,6 +304,7 @@ def save_narrative_artefact_to_sheets(narrative_data):
             narrative_data.get("community", ""),
             narrative_data.get("link", ""),
             narrative_data.get("content", ""),    
+            narrative_data.get("hashtags", ""),
             datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # Timestam     
         ]
         
@@ -187,7 +316,20 @@ def save_narrative_artefact_to_sheets(narrative_data):
             st.session_state.archived_narratives = set()
         st.session_state.archived_narratives.add(narrative_data.get("hash"))
         
-        return True
+        # Get the updated narrative data from sheets to ensure we have latest version
+        updated_narrative = narrative_sheet.find(narrative_data["hash"])
+        if updated_narrative:
+            row = narrative_sheet.row_values(updated_narrative.row)
+            return {
+                "hash": row[0],
+                "title": row[1], 
+                "narrative": row[2],
+                "community": row[3],
+                "link": row[4],
+                "content": row[5],
+                "hashtags": row[6]
+            }
+        return updated_narrative
     except Exception as e:
         st.error(f"Failed to save to archive: {str(e)}")
         return False
@@ -197,6 +339,44 @@ def is_archived(narrative_hash):
     if 'archived_narratives' not in st.session_state:
         st.session_state.archived_narratives = set()
     return narrative_hash in st.session_state.archived_narratives
+
+def update_review_status(response_id, reviewer, status):
+    """Update the review status for a specific response."""
+    try:
+        sheets = get_sheets()
+        if not sheets:
+            st.error("Could not access worksheets")
+            return False
+            
+        responses_sheet = sheets['responses']
+        
+        # Find the row corresponding to the response_id
+        cell = responses_sheet.find(response_id)
+        if cell:
+            row_index = cell.row
+            
+            # Prepare the column index based on the reviewer
+            if reviewer == "Ché":
+                col_index = 10  # Column for Reviewed (Ché)
+            elif reviewer == "Ross":
+                col_index = 11  # Column for Reviewed (Ross)
+            elif reviewer == "Cristina":
+                col_index = 12  # Column for Reviewed (Cristina)
+            elif reviewer == "Adam":
+                col_index = 13  # Column for Reviewed (Adam)
+            else:
+                st.error("Invalid reviewer name")
+                return False
+            
+            # Update the review status in the correct column
+            responses_sheet.update_cell(row_index, col_index, status)
+            return True
+        else:
+            st.error("Response ID not found")
+            return False
+    except Exception as e:
+        st.error(f"Failed to update review status: {str(e)}")
+        return False
 
 ###################
 ## STREAMLIT UI ##
@@ -387,7 +567,9 @@ with tab2:
                             with st.spinner('Generating response...'):
                                 handle_generate_response(narrative, strategy)
                                 st.success("Success! See Responses tab.")
-            
+                        
+                    
+                
             with right_col:
 
                 if not is_archived(narrative["hash"]):
@@ -426,7 +608,7 @@ with tab3:
                 st.markdown("### Generated Responses")
                 for idx, response in enumerate(entry['responses']):
                     with st.container():
-                        st.markdown("---")
+                        st.markdown("---") 
                         # Editable text area for response content
                         response_content = st.text_area(f"Response {idx + 1} (Strategy: {response['strategy']})", 
                                                          value=response['content'], 
@@ -435,28 +617,145 @@ with tab3:
                         
                         # Button to update the response content in the session state
                         if st.button("Update Response", key=f"update_{entry['id']}_{idx}"):
-                            # Update the original response object
+                            if 'narrative_responses' in st.session_state:
+                                for i, resp_entry in enumerate(st.session_state.narrative_responses):
+                                    if resp_entry.get("id") == entry["id"]:
+                                        st.session_state.narrative_responses[i]["responses"][idx]["content"] = response_content
+                                        st.rerun()
+                                        break
+                                st.success("Response content updated!")
+
+                            else:
+                                st.error("No narrative_responses found in session state.")
                             
-                            st.success("Response content updated!")
+
+                       
+                        # Display suggested hashtags
+
+                        st.markdown('**Suggested Hashtags**')
+
+                        if 'hashtags' in entry and entry['hashtags']:
+
+                            # Flatten the list of hashtags if it's a list of lists
+                            flat_hashtags = [hashtag for sublist in entry['hashtags'] for hashtag in sublist] if isinstance(entry['hashtags'][0], list) else entry['hashtags']
+                            st.markdown(", ".join(flat_hashtags))  # Ensure hashtags are displayed
+                        else:
+                            with st.form(key=f"hashtag_form_{entry['id']}_{idx}"):
+                                st.markdown("No hashtags found")
+                                if st.form_submit_button("Generate Hashtags"):
+                                        handle_generate_hashtags(entry)
+                                        st.rerun()
+
                         st.markdown("**Associated Thread**")
-                        if entry['thread']:
+                        if 'thread' in entry and entry['thread']:
                             st.markdown(entry['thread']['Topic'])
                             st.markdown(entry['thread']['Link'])
                         else:
-                            st.markdown("No associated thread found")
-
+                             with st.form(key=f"thread_form_{entry['id']}_{idx}"):
+                                st.markdown("No thread found")
+                                if st.form_submit_button("Generate Thread"):
+                                        handle_generate_thread(entry)
+                                        st.rerun()
                         # Button to save the updated response to sheets
                         if st.button("Save Response to Sheets", key=f"save_{entry['id']}_{idx}"):
                             with st.spinner('Saving response to archive...'):
                                 save_response_to_sheets(entry, idx)  # Save to sheets
                                 st.success("Response saved to archive!")
-
 # Archive:
 with tab4: 
     st.header("Archive")
     st.write("View the archived responses in the Google Sheet:")
+    
+    # Add a checkbox to filter by posted value
+    filter_posted = st.checkbox("Hide Posted Responses", value=False)
+
     st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)
 
+    
+    
+    try:
+        # Get fresh connection to sheets
+        sheets = get_sheets()
+        if not sheets:
+            st.error("Could not access worksheets")
+        else:
+            responses_sheet = sheets['responses']
+            
+            # Define expected headers
+            expected_headers = ['Title', 'Original Post', 'Response', 'Strategy', 'Link', 'Date', 
+                              'Reviewed (Ché)', 'Reviewed (Ross)', 'Reviewed (Cristina)', 'Reviewed (Adam)', 'Posted']
+            responses = responses_sheet.get_all_records(expected_headers=expected_headers)
+            
+            if not responses:
+                st.write("No archived responses found.")
+            else:
+                # Get count of archived responses
+          
+                for index, response in enumerate(responses):  # Use enumerate to get the index
+                    # Filter responses based on the posted checkbox
+                    posted = response['Posted'] == True or response['Posted'] == 'TRUE'
+                    if filter_posted and posted:
+                        continue  # Skip posted responses if the checkbox is checked
+                    
+                    with st.expander(f"🗂️ {response.get('Title', 'Untitled')}", expanded=False):
+                        st.markdown("**Original Post:**")
+                        st.write(response.get('Original Post', 'No content'))
+                        
+                        st.markdown("**Response:**") 
+                        st.write(response.get('Response', 'No response'))
+                        
+                        st.markdown("**Strategy:**")
+                        st.write(response.get('Strategy', 'No strategy'))
+                        
+                        st.markdown("**Source:**")
+                        if response.get('Link'):
+                            st.markdown(f"[Source Link]({response['Link']})")
+                        else:
+                            st.write("No source link")
+                            
+                        st.markdown("**Archived on:**")
+                        st.write(response.get('Date', 'No date'))
+                        
+                        st.markdown("---")
+                        st.markdown("**Approved By:**")
+                        
+                        # Convert string values to boolean
+                        reviewed_che = response.get('Reviewed (Ché)', 'FALSE').strip().upper() == 'TRUE'
+                        reviewed_ross = response.get('Reviewed (Ross)', 'FALSE').strip().upper() == 'TRUE'
+                        reviewed_cristina = response.get('Reviewed (Cristina)', 'FALSE').strip().upper() == 'TRUE'
+                        reviewed_adam = response.get('Reviewed (Adam)', 'FALSE').strip().upper() == 'TRUE'
+
+                        # Checkboxes for review status
+                        reviewed_che = st.checkbox("Ché", value=reviewed_che, key=f"che_{response.get('Date')}_{index}")
+                        reviewed_ross = st.checkbox("Ross", value=reviewed_ross, key=f"ross_{response.get('Date')}_{index}")
+                        reviewed_cristina = st.checkbox("Cristina", value=reviewed_cristina, key=f"cristina_{response.get('Date')}_{index}")
+                        reviewed_adam = st.checkbox("Adam", value=reviewed_adam, key=f"adam_{response.get('Date')}_{index}")
+
+                        # Update the spreadsheet when checkboxes are changed
+                        if st.button("Update Review Status", key=f"update_status_{response.get('Date')}_{index}"):  # Added index for uniqueness
+                            # Update the spreadsheet with the current checkbox states
+                            responses_sheet.update_cell(responses.index(response) + 2, 10, reviewed_che)
+                            responses_sheet.update_cell(responses.index(response) + 2, 11, reviewed_ross) 
+                            responses_sheet.update_cell(responses.index(response) + 2, 12, reviewed_cristina)
+                            responses_sheet.update_cell(responses.index(response) + 2, 13, reviewed_adam)
+                            st.success("Review status updated!")
+
+                        st.markdown("---")  
+                        # Posted status
+                        st.markdown("**Posted Status:**")
+                        if st.button("Mark as Posted", key=f"mark_posted_{response.get('Date')}_{index}", disabled=posted):
+                            # Update the Posted? column (column 14)
+                            responses_sheet.update_cell(responses.index(response) + 2, 14, True)
+                            st.success("Marked as posted!")
+                            st.rerun()
+                        
+                        if posted:
+                            st.info("✓ This response has been posted")
+                        else:
+                            st.warning("⚠ This response has not been posted yet")
+                            
+    except Exception as e:
+        st.error(f"Error loading archived responses: {str(e)}")
 # Add new Config tab at the end
 with tab5:
     st.header("Configuration")
