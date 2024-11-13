@@ -145,19 +145,12 @@ def save_response_to_sheets(response_data, idx):
 def load_thread_data_from_sheets():
     """Load data from Google Sheets archive."""
     try:
-        # Get fresh connection to sheets
         sheets = get_sheets()
         if not sheets:
             st.error("Could not access worksheets")
             return None
-            
-  
-
-        thread_sheet = sheets['threads']
-        
-        # Get all records
+        thread_sheet = sheets['threads']      
         thread_records = thread_sheet.get_all_records()
-
         return thread_records
     except Exception as e:
         st.error(f"Failed to load from archive: {str(e)}")
