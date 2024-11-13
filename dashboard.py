@@ -1,12 +1,9 @@
-import gspread
 import streamlit as st
 import os
-from database import get_google_credentials, setup_google_sheets, get_sheets
+from database import setup_google_sheets, get_sheets
 from listen import parse_narrative_artefact, search_narrative_artefacts
 import datetime
-import hashlib
-
-from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, LINK_MAPPING
+from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
 from respond import generate_response
 
 narrative_sheet = None
@@ -59,11 +56,11 @@ def handle_generate_response(narrative, strategy):
     }
 
     link_res = generate_response(link_assistant_id, link_llm_context)
-    print("LINK RES", link_res)
+    thread_data =  load_thread_data_from_sheets()
     if link_res != 'NULL' and link_res.isdigit():
-        thread_link = LINK_MAPPING[int(link_res)]
+        thread = next((thread for thread in thread_data if thread['Thread'] == ('Thread ' + str(link_res))), None)
     else:
-        thread_link = None
+        thread = None
 
     
     # Create response object with strategy metadata
@@ -84,7 +81,7 @@ def handle_generate_response(narrative, strategy):
             "content": narrative["content"],
             "date": datetime.date.today().strftime("%Y-%m-%d"),
         },
-        "thread_link": thread_link,
+        "thread": thread,
         "responses": [response_obj] if res else []
     }
 
@@ -135,6 +132,7 @@ def save_response_to_sheets(response_data, idx):
             response_data["original_post"]["link"],
             response_data["responses"][idx]["content"],
             response_data["responses"][idx]["strategy"],
+            "FALSE",
             "FALSE"
         ]
 
@@ -143,6 +141,28 @@ def save_response_to_sheets(response_data, idx):
     except Exception as e:
         st.error(f"Failed to save to archive: {str(e)}")
         return False
+    
+def load_thread_data_from_sheets():
+    """Load data from Google Sheets archive."""
+    try:
+        # Get fresh connection to sheets
+        sheets = get_sheets()
+        if not sheets:
+            st.error("Could not access worksheets")
+            return None
+            
+  
+
+        thread_sheet = sheets['threads']
+        
+        # Get all records
+        thread_records = thread_sheet.get_all_records()
+
+        return thread_records
+    except Exception as e:
+        st.error(f"Failed to load from archive: {str(e)}")
+        return None
+
 
 def save_narrative_artefact_to_sheets(narrative_data):
     """Save narrative data to Google Sheets archive."""
@@ -403,7 +423,7 @@ with tab3:
             st.rerun()
             
         for entry in responses_data:
-            print("Entry", entry)
+
             with st.expander(f"🔍 {entry['original_post']['title']}", expanded=False):
                 # Display original post details
                 st.markdown(f"**Original Content:** {entry['original_post']['content']}")
@@ -416,7 +436,14 @@ with tab3:
                         st.markdown("---")
                         st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
                         st.markdown(response['content'])
-                        st.markdown(entry['thread_link'])
+                        st.markdown("---")
+                        st.markdown("**Associated Thread**")
+                        if entry['thread']:
+                            st.markdown(entry['thread']['Topic'])
+                            st.markdown(entry['thread']['Link'])
+                        else:
+                            st.markdown("No associated thread found")
+
                         if st.button("Save Response", key=f"save_{entry['id']}_{idx}"):
                             with st.spinner('Saving response to archive...'):
                                 save_response_to_sheets(entry, idx)

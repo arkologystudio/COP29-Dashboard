@@ -15,7 +15,8 @@ def get_sheets():
         
         return {
             'narrative': spreadsheet.worksheet('Narrative Results'),
-            'responses': spreadsheet.worksheet('Responses')
+            'responses': spreadsheet.worksheet('Responses'),
+            'threads': spreadsheet.worksheet('Threads')
         }
     except Exception as e:
         st.error(f"Failed to setup Google Sheets: {str(e)}")
