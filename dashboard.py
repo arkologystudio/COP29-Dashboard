@@ -427,18 +427,26 @@ with tab3:
                 for idx, response in enumerate(entry['responses']):
                     with st.container():
                         st.markdown("---")
-                        st.markdown(f"**Response {idx + 1}** (Strategy: {response['strategy']})")
-                        st.markdown(response['content'])
+                        # Editable text area for response content
+                        response_content = st.text_area(f"Response {idx + 1} (Strategy: {response['strategy']})", 
+                                                         value=response['content'], 
+                                                         height=200, 
+                                                         key=f"response_edit_{entry['id']}_{idx}")
+                        
+                        # Button to update the response content in the session state
+                        if st.button("Update Response", key=f"update_{entry['id']}_{idx}"):
+                            # Update the original response object
+                            
+                            st.success("Response content updated!")
                         st.markdown("**Associated Thread**")
                         if entry['thread']:
                             st.markdown(entry['thread']['Topic'])
                             st.markdown(entry['thread']['Link'])
-                        else:
-                            st.markdown("No associated thread found")
 
-                        if st.button("Save Response", key=f"save_{entry['id']}_{idx}"):
+                        # Button to save the updated response to sheets
+                        if st.button("Save Response to Sheets", key=f"save_{entry['id']}_{idx}"):
                             with st.spinner('Saving response to archive...'):
-                                save_response_to_sheets(entry, idx)
+                                save_response_to_sheets(entry, idx)  # Save to sheets
                                 st.success("Response saved to archive!")
 
 # Archive:
