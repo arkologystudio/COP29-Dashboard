@@ -40,12 +40,18 @@ def load_card_template(file_path):
 def handle_generate_thread(narrative):
     try:    
         link_assistant_id = st.secrets["openai"]["link_assistant_id"]
+
+        thread_data = load_thread_data_from_sheets()
+
+        # Filter out the 'Link' property from thread data
+        openai_thread_data = [{k: v for k, v in thread.items() if k != 'Link'} for thread in thread_data]
         link_llm_context = {
             "narrative": narrative,
+            "thread_data": openai_thread_data
         }
 
         link_res = generate_response(link_assistant_id, link_llm_context)
-        thread_data = load_thread_data_from_sheets()
+        print("Link Response:", link_res)
         
         if link_res != 'NULL' and link_res.isdigit():
             thread = next((thread for thread in thread_data if thread['Thread'] == ('Thread ' + str(link_res))), None)
