@@ -3,11 +3,13 @@ import os
 from database import setup_google_sheets, get_sheets
 from listen import parse_narrative_artefact, search_narrative_artefacts
 import datetime
-from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES
+from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, VOICES
 from respond import generate_response
-
+from typed_dicts import NarrativeResponse, Response, OriginalPost
 narrative_sheet = None
 responses_sheet = None
+
+
 
 def load_listening_tags():
     if 'listening_tags' not in st.session_state:
@@ -143,7 +145,7 @@ def handle_generate_hashtags(entry):
     except Exception as e:
         st.error(f"Failed to generate hashtags: {str(e)}")
 
-def handle_generate_response(narrative, strategy):
+def handle_generate_response(narrative: dict, strategy: str, voice: str):
     """Handle response generation for a narrative with specific strategy."""
     assistant_id = RESPONSE_STRATEGIES[strategy]
     llm_context = {
@@ -158,15 +160,23 @@ def handle_generate_response(narrative, strategy):
         st.error("Failed to generate a response.")
         return
 
+    if voice != "Default":
+        voice_assistant_id = VOICES[voice]
+        llm_context = narrative['content']
+        print("DETAILS: ", voice, res)
+        res = generate_response(voice_assistant_id, res)
+        print("new Res: ", res)
+
     # Create response object with strategy metadata
     response_obj = {
         "content": res,
         "strategy": strategy,
+        "voice": voice,
         "timestamp": datetime.datetime.now().isoformat()
     }
     
     # Create response entry with all narrative data
-    response_entry = {
+    response_entry: NarrativeResponse = {
         "id": narrative["hash"],  # Standardizing 'id' to be the same as 'hash'
         "original_post": {
             "title": narrative["title"],
@@ -371,6 +381,8 @@ def update_review_status(response_id, reviewer, status):
                 col_index = 12  # Column for Reviewed (Cristina)
             elif reviewer == "Adam":
                 col_index = 13  # Column for Reviewed (Adam)
+            elif reviewer == "Wanjiru":  # New reviewer
+                col_index = 14  # Column for Reviewed (Wanjiru)
             else:
                 st.error("Invalid reviewer name")
                 return False
@@ -555,28 +567,27 @@ with tab2:
             
             # Create two columns with different widths (7:3 ratio)
             left_col, right_col = st.columns([0.8, 0.2])
-            
             with left_col:
                 # Create sub-columns for response controls with more balanced widths
                 with st.form(key=f"response_form_{unique_suffix}"):
-                    resp_col1, resp_col2 = st.columns([0.4, 0.6])
-                    with resp_col2:
-                        strategy = st.selectbox(
-                            "Response Strategy",
-                            options=list(RESPONSE_STRATEGIES.keys()),
-                            key=f"strategy_{unique_suffix}",
-                            label_visibility="collapsed"
-                        )
+                    resp_col1, resp_col2 = st.columns(2)
                     with resp_col1:
-                        submit_response = st.form_submit_button("Generate Response")
-                        if submit_response:
-                            
-                            with st.spinner('Generating response...'):
-                                handle_generate_response(narrative, strategy)
-                                st.success("Success! See Responses tab.")
-                        
-                    
-                
+                        strategy = st.selectbox(
+                            "Strategy",
+                            options=list(RESPONSE_STRATEGIES.keys()),
+                            key=f"strategy_{unique_suffix}"
+                        )
+                    with resp_col2:
+                        voice = st.selectbox(
+                            "Voice", 
+                            options=list(VOICES.keys()),
+                            key=f"voice_{unique_suffix}"
+                        )
+                    submit_response = st.form_submit_button("Generate Response")
+                    if submit_response:
+                        with st.spinner('Generating response...'):
+                            handle_generate_response(narrative, strategy, voice)
+                            st.success("Success! See Responses tab.")
             with right_col:
 
                 if not is_archived(narrative["hash"]):
@@ -735,12 +746,14 @@ with tab4:
                         reviewed_ross = response.get('Reviewed (Ross)', 'FALSE').strip().upper() == 'TRUE'
                         reviewed_cristina = response.get('Reviewed (Cristina)', 'FALSE').strip().upper() == 'TRUE'
                         reviewed_adam = response.get('Reviewed (Adam)', 'FALSE').strip().upper() == 'TRUE'
+                        reviewed_wanjiru = response.get('Reviewed (Wanjiru)', 'FALSE').strip().upper() == 'TRUE'  # New reviewer
 
                         # Checkboxes for review status
                         reviewed_che = st.checkbox("Ché", value=reviewed_che, key=f"che_{response.get('Date')}_{index}")
                         reviewed_ross = st.checkbox("Ross", value=reviewed_ross, key=f"ross_{response.get('Date')}_{index}")
                         reviewed_cristina = st.checkbox("Cristina", value=reviewed_cristina, key=f"cristina_{response.get('Date')}_{index}")
                         reviewed_adam = st.checkbox("Adam", value=reviewed_adam, key=f"adam_{response.get('Date')}_{index}")
+                        reviewed_wanjiru = st.checkbox("Wanjiru", value=reviewed_wanjiru, key=f"wanjiru_{response.get('Date')}_{index}")  # New checkbox
 
                         # Update the spreadsheet when checkboxes are changed
                         if st.button("Update Review Status", key=f"update_status_{response.get('Date')}_{index}"):  # Added index for uniqueness
@@ -749,6 +762,7 @@ with tab4:
                             responses_sheet.update_cell(responses.index(response) + 2, 11, reviewed_ross) 
                             responses_sheet.update_cell(responses.index(response) + 2, 12, reviewed_cristina)
                             responses_sheet.update_cell(responses.index(response) + 2, 13, reviewed_adam)
+                            responses_sheet.update_cell(responses.index(response) + 2, 14, reviewed_wanjiru)  # Update for Wanjiru
                             st.success("Review status updated!")
 
                         st.markdown("---")  
