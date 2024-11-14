@@ -259,6 +259,7 @@ def save_response_to_sheets(response_data, idx):
             False,            # Reviewed (Ross)
             False,            # Reviewed (Cristina)
             False,            # Reviewed (Adam)
+            False,            # Reviewed (Wanjiru)
             False,            # Posted?
             0,                # View Count (at time of response)
             0,                # Like Count (at time of response)
