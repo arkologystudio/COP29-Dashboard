@@ -771,7 +771,7 @@ with tab4:
                         st.markdown("**Posted Status:**")
                         if st.button("Mark as Posted", key=f"mark_posted_{response.get('Date')}_{index}", disabled=posted):
                             # Update the Posted? column (column 14)
-                            responses_sheet.update_cell(responses.index(response) + 2, 14, True)
+                            responses_sheet.update_cell(responses.index(response) + 2, 15, True)
                             st.success("Marked as posted!")
                             st.rerun()
                         
