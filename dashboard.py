@@ -37,16 +37,17 @@ def load_card_template(file_path):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
     
-def handle_generate_thread(narrative):
+def handle_generate_thread(narrative, response_idx):
     try:    
         link_assistant_id = st.secrets["openai"]["link_assistant_id"]
 
         thread_data = load_thread_data_from_sheets()
 
+
         # Filter out the 'Link' property from thread data
         openai_thread_data = [{k: v for k, v in thread.items() if k != 'Link'} for thread in thread_data]
         link_llm_context = {
-            "narrative": narrative,
+            "narrative": narrative['responses'][response_idx]['content'],
             "thread_data": openai_thread_data
         }
 
@@ -660,7 +661,7 @@ with tab3:
                              with st.form(key=f"thread_form_{entry['id']}_{idx}"):
                                 st.markdown("No thread found")
                                 if st.form_submit_button("Generate Thread"):
-                                        handle_generate_thread(entry)
+                                        handle_generate_thread(entry, idx)
                                         st.rerun()
                         # Button to save the updated response to sheets
                         if st.button("Save Response to Sheets", key=f"save_{entry['id']}_{idx}"):
