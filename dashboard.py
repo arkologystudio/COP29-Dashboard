@@ -54,7 +54,6 @@ def handle_generate_thread(narrative, response_idx):
         }
 
         link_res = generate_response(link_assistant_id, link_llm_context)
-        print("Link Response:", link_res)
         
         if link_res != 'NULL' and link_res.isdigit():
             thread = next((thread for thread in thread_data if thread['Thread'] == ('Thread ' + str(link_res))), None)
@@ -163,9 +162,7 @@ def handle_generate_response(narrative: dict, strategy: str, voice: str):
     if voice != "Default":
         voice_assistant_id = VOICES[voice]
         llm_context = narrative['content']
-        print("DETAILS: ", voice, res)
         res = generate_response(voice_assistant_id, res)
-        print("new Res: ", res)
 
     # Create response object with strategy metadata
     response_obj = {
@@ -266,8 +263,6 @@ def save_response_to_sheets(response_data, idx):
             0                 # Retweet Count (at time of response)
         ]
         
-        # Debugging: Print the row data before appending
-        print("Row Data to Append:", row_data)
 
         responses_sheet.append_row(row_data)
         return True
