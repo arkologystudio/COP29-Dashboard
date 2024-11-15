@@ -780,16 +780,35 @@ with tab4:
                         st.markdown("---")  
                         # Posted status
                         st.markdown("**Posted Status:**")
-                        if st.button("Mark as Posted", key=f"mark_posted_{response.get('Date')}_{index}", disabled=posted):
-                            # Update the Posted? column (column 14)
-                            responses_sheet.update_cell(responses.index(response) + 2, 15, True)
-                            st.success("Marked as posted!")
-                            st.rerun()
+                        
                         
                         if posted:
                             st.info("✓ This response has been posted")
                         else:
                             st.warning("⚠ This response has not been posted yet")
+                            with st.form(key=f"post_metrics_{response.get('Date')}_{index}"):
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    views = st.number_input("Views", min_value=0, value=0)
+                                with col2:
+                                    likes = st.number_input("Likes", min_value=0, value=0)
+                                with col3:
+                                    retweets = st.number_input("Retweets", min_value=0, value=0)
+                                with col4:
+                                    comments = st.number_input("Comments", min_value=0, value=0)
+                                submitted = st.form_submit_button("Submit Metrics")
+                                if submitted:
+                                    # Update metrics columns
+                                    responses_sheet.update_cell(responses.index(response) + 2, 16, views)
+                                    responses_sheet.update_cell(responses.index(response) + 2, 17, likes)
+                                    responses_sheet.update_cell(responses.index(response) + 2, 18, retweets)
+                                    responses_sheet.update_cell(responses.index(response) + 2, 19, comments)
+                                    st.success("Metrics updated!")
+                        if st.button("Mark as Posted", key=f"mark_posted_{response.get('Date')}_{index}", disabled=posted):
+                            # Update the Posted? column (column 14)
+                            responses_sheet.update_cell(responses.index(response) + 2, 15, True)
+                            st.success("Marked as posted!")
+                            st.rerun()
                             
     except Exception as e:
         st.error(f"Error loading archived responses: {str(e)}")
