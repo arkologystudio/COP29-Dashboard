@@ -722,6 +722,17 @@ with tab4:
                         
                         st.markdown("**Response:**") 
                         st.write(response.get('Response', 'No response'))
+                        st.write(response.get('Hashtags', ''))
+                        # Extract thread link if p  resent
+                        thread = response.get('Thread', '')
+                        if thread:
+                            # Check if thread contains "Link:" and extract the URL
+                            if 'Link:' in thread:
+                                thread_parts = thread.split('Link:')
+                                thread_text = thread_parts[0].strip()
+                                thread_link = thread_parts[1].strip()
+                                st.write(f"{thread_link}")
+                  
 
                         st.markdown("**Hashtags:**")
                         st.write(response.get('Hashtags', 'No hashtags'))
