@@ -451,7 +451,7 @@ with tab1:
             "Enter number of days in the past to search:", 
             min_value=0, 
             max_value=365, 
-            value=st.session_state.get('days_input', 7), 
+            value=st.session_state.get('days_input', 1), 
             step=1
         )
 
