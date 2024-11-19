@@ -88,22 +88,15 @@ def search_narrative_artefacts(days=7):
 def parse_narrative_artefact(exa_results):
     """Parse narrative artefacts using the Narrative Identification Assistant."""
     try:
-        print("Starting to parse narrative artefacts...")
-        
         if "processed_hashes" not in st.session_state:
             st.session_state.processed_hashes = set()
-            print("Initialized processed_hashes in session state")
-        
-        for result in exa_results:
-            print(f"Processing result with title: {result.title}")
 
+        for result in exa_results:
             # Generate a unique hash for each content
             content_hash = hashlib.md5(result.text[:300].encode()).hexdigest()
-            print(f"Generated hash: {content_hash}")
-            
+
             # Skip duplicates across multiple function calls
             if content_hash in st.session_state.processed_hashes:
-                print(f"Skipping duplicate content with hash: {content_hash}")
                 continue
             st.session_state.processed_hashes.add(content_hash)
             
@@ -111,18 +104,15 @@ def parse_narrative_artefact(exa_results):
                 "title": result.title,
                 "content": result.text
             }
-            print(f"Created LLM context with title: {result.title}")
             
             try:
                 print("Calling identification assistant...")
                 parsed_data = invoke_identification_assistant(llm_context)
                 if parsed_data:
-                    print("Successfully received parsed data from assistant")
                     # Combine metadata from exa with the LLM response
                     parsed_data["hash"] = content_hash  # Add the hash to parsed data
                     parsed_data['link'] = result.url
                     parsed_data['content'] = result.text
-                    print(f"Yielding parsed data for content with hash: {content_hash}")
                     yield parsed_data  # Yield each parsed content individually with its hash
                 else:
                     print("Warning: identification assistant returned empty result")
