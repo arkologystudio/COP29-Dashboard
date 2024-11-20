@@ -727,14 +727,14 @@ with tab4:
                                 submitted = st.form_submit_button("Submit Metrics")
                                 if submitted:
                                     # Update metrics columns (adjusted indices)
-                                    responses_sheet.update_cell(responses.index(response) + 2, 16, views)  # Views
-                                    responses_sheet.update_cell(responses.index(response) + 2, 17, likes)  # Likes
-                                    responses_sheet.update_cell(responses.index(response) + 2, 18, retweets)  # Retweets
-                                    responses_sheet.update_cell(responses.index(response) + 2, 19, comments)  # Comments
+                                    responses_sheet.update_cell(responses.index(response) + 2, 11, views)  # Views
+                                    responses_sheet.update_cell(responses.index(response) + 2, 12, likes)  # Likes
+                                    responses_sheet.update_cell(responses.index(response) + 2, 13, retweets)  # Retweets
+                                    responses_sheet.update_cell(responses.index(response) + 2, 14, comments)  # Comments
                                     st.success("Metrics updated!")
                         if st.button("Mark as Posted", key=f"mark_posted_{response.get('Date')}_{index}", disabled=posted):
                             # Update the Posted? column (column 14)
-                            responses_sheet.update_cell(responses.index(response) + 2, 15, True)
+                            responses_sheet.update_cell(responses.index(response) + 2, 10, True)
                             st.success("Marked as posted!")
                             st.rerun()
                             
