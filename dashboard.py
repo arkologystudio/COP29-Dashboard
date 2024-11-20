@@ -441,7 +441,7 @@ with tab1:
 
         listening_data_str = "\n".join(load_listening_tags())
         temp_user_input = st.text_area(
-            "Enter list of search terms (one phrase per line):", 
+            "Enter list of search phrases (one per line):", 
             listening_data_str, 
             placeholder="e.g.\nCarbon storage and capture devices\nCarbon credit markets\nInvestment in clean energy", 
             height=160,
