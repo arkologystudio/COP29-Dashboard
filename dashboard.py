@@ -252,11 +252,6 @@ def save_response_to_sheets(response_data, idx):
             response_data["responses"][idx].get("strategy", ""),  # Strategy
             hashtags_string,  # Hashtags
             thread,           # Thread
-            False,            # Reviewed (Ché)
-            False,            # Reviewed (Ross)
-            False,            # Reviewed (Cristina)
-            False,            # Reviewed (Adam)
-            False,            # Reviewed (Wanjiru)
             False,            # Posted?
             0,                # View Count (at time of response)
             0,                # Like Count (at time of response)
@@ -353,45 +348,6 @@ def is_archived(narrative_hash):
         st.session_state.archived_narratives = set()
     return narrative_hash in st.session_state.archived_narratives
 
-def update_review_status(response_id, reviewer, status):
-    """Update the review status for a specific response."""
-    try:
-        sheets = get_sheets()
-        if not sheets:
-            st.error("Could not access worksheets")
-            return False
-            
-        responses_sheet = sheets['responses']
-        
-        # Find the row corresponding to the response_id
-        cell = responses_sheet.find(response_id)
-        if cell:
-            row_index = cell.row
-            
-            # Prepare the column index based on the reviewer
-            if reviewer == "Ché":
-                col_index = 10  # Column for Reviewed (Ché)
-            elif reviewer == "Ross":
-                col_index = 11  # Column for Reviewed (Ross)
-            elif reviewer == "Cristina":
-                col_index = 12  # Column for Reviewed (Cristina)
-            elif reviewer == "Adam":
-                col_index = 13  # Column for Reviewed (Adam)
-            elif reviewer == "Wanjiru":  # New reviewer
-                col_index = 14  # Column for Reviewed (Wanjiru)
-            else:
-                st.error("Invalid reviewer name")
-                return False
-            
-            # Update the review status in the correct column
-            responses_sheet.update_cell(row_index, col_index, status)
-            return True
-        else:
-            st.error("Response ID not found")
-            return False
-    except Exception as e:
-        st.error(f"Failed to update review status: {str(e)}")
-        return False
 
 ###################
 ## STREAMLIT UI ##
@@ -451,7 +407,7 @@ with tab1:
             "Enter number of days in the past to search:", 
             min_value=0, 
             max_value=365, 
-            value=st.session_state.get('days_input', 7), 
+            value=st.session_state.get('days_input', 1), 
             step=1
         )
 
@@ -499,6 +455,7 @@ with tab2:
     
     st.header("Search & Review")
     st.write("Search & review retrieved narrative artefacts")
+
 
     # Add checkbox for filtering insufficient context
     show_sufficient_context = st.checkbox(
@@ -681,7 +638,7 @@ with tab4:
     st.write("View the archived responses in the Google Sheet:")
     
     # Add a checkbox to filter by posted value
-    filter_posted = st.checkbox("Hide Posted Responses", value=False)
+    filter_posted = st.checkbox("Show Posted Responses", value=True)
 
     st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)
 
@@ -696,8 +653,7 @@ with tab4:
             responses_sheet = sheets['responses']
             
             # Define expected headers
-            expected_headers = ['Title', 'Original Post', 'Response', 'Strategy', 'Link', 'Date', 'Hashtags', 'Thread',
-                              'Reviewed (Ché)', 'Reviewed (Ross)', 'Reviewed (Cristina)', 'Reviewed (Adam)', 'Posted']
+            expected_headers = ['Title', 'Original Post', 'Response', 'Strategy', 'Link', 'Date', 'Hashtags', 'Thread']
             responses = responses_sheet.get_all_records(expected_headers=expected_headers)
             
             if not responses:
@@ -748,29 +704,6 @@ with tab4:
                         st.markdown("---")
                         st.markdown("**Approved By:**")
                         
-                        # Convert string values to boolean
-                        reviewed_che = response.get('Reviewed (Ché)', 'FALSE').strip().upper() == 'TRUE'
-                        reviewed_ross = response.get('Reviewed (Ross)', 'FALSE').strip().upper() == 'TRUE'
-                        reviewed_cristina = response.get('Reviewed (Cristina)', 'FALSE').strip().upper() == 'TRUE'
-                        reviewed_adam = response.get('Reviewed (Adam)', 'FALSE').strip().upper() == 'TRUE'
-                        reviewed_wanjiru = response.get('Reviewed (Wanjiru)', 'FALSE').strip().upper() == 'TRUE'  # New reviewer
-
-                        # Checkboxes for review status
-                        reviewed_che = st.checkbox("Ché", value=reviewed_che, key=f"che_{response.get('Date')}_{index}")
-                        reviewed_ross = st.checkbox("Ross", value=reviewed_ross, key=f"ross_{response.get('Date')}_{index}")
-                        reviewed_cristina = st.checkbox("Cristina", value=reviewed_cristina, key=f"cristina_{response.get('Date')}_{index}")
-                        reviewed_adam = st.checkbox("Adam", value=reviewed_adam, key=f"adam_{response.get('Date')}_{index}")
-                        reviewed_wanjiru = st.checkbox("Wanjiru", value=reviewed_wanjiru, key=f"wanjiru_{response.get('Date')}_{index}")  # New checkbox
-
-                        # Update the spreadsheet when checkboxes are changed
-                        if st.button("Update Review Status", key=f"update_status_{response.get('Date')}_{index}"):  # Added index for uniqueness
-                            # Update the spreadsheet with the current checkbox states
-                            responses_sheet.update_cell(responses.index(response) + 2, 10, reviewed_che)
-                            responses_sheet.update_cell(responses.index(response) + 2, 11, reviewed_ross) 
-                            responses_sheet.update_cell(responses.index(response) + 2, 12, reviewed_cristina)
-                            responses_sheet.update_cell(responses.index(response) + 2, 13, reviewed_adam)
-                            responses_sheet.update_cell(responses.index(response) + 2, 14, reviewed_wanjiru)  # Update for Wanjiru
-                            st.success("Review status updated!")
 
                         st.markdown("---")  
                         # Posted status
@@ -793,11 +726,11 @@ with tab4:
                                     comments = st.number_input("Comments", min_value=0, value=0)
                                 submitted = st.form_submit_button("Submit Metrics")
                                 if submitted:
-                                    # Update metrics columns
-                                    responses_sheet.update_cell(responses.index(response) + 2, 16, views)
-                                    responses_sheet.update_cell(responses.index(response) + 2, 17, likes)
-                                    responses_sheet.update_cell(responses.index(response) + 2, 18, retweets)
-                                    responses_sheet.update_cell(responses.index(response) + 2, 19, comments)
+                                    # Update metrics columns (adjusted indices)
+                                    responses_sheet.update_cell(responses.index(response) + 2, 16, views)  # Views
+                                    responses_sheet.update_cell(responses.index(response) + 2, 17, likes)  # Likes
+                                    responses_sheet.update_cell(responses.index(response) + 2, 18, retweets)  # Retweets
+                                    responses_sheet.update_cell(responses.index(response) + 2, 19, comments)  # Comments
                                     st.success("Metrics updated!")
                         if st.button("Mark as Posted", key=f"mark_posted_{response.get('Date')}_{index}", disabled=posted):
                             # Update the Posted? column (column 14)
