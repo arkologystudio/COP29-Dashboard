@@ -701,8 +701,6 @@ with tab4:
                         st.markdown("**Archived on:**")
                         st.write(response.get('Date', 'No date'))
                         
-                        st.markdown("---")
-                        st.markdown("**Approved By:**")
                         
 
                         st.markdown("---")  
