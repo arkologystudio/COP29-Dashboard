@@ -540,7 +540,6 @@ with tab2:
                     if submit_response:
                         with st.spinner('Generating response...'):
                             handle_generate_response(narrative, strategy, voice)
-                            st.success("Success! See Responses tab.")
             with right_col:
 
                 if not is_archived(narrative["hash"]):
