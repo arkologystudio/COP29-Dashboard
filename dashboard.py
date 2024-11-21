@@ -646,7 +646,7 @@ with tab4:
     st.write("View the archived responses in the Google Sheet:")
     
     # Add a checkbox to filter by posted value
-    filter_posted = st.checkbox("Show Posted Responses", value=True)
+    filter_posted = st.checkbox("Hide Posted Responses", value=True)
 
     st.markdown(f"[See archived responses](https://docs.google.com/spreadsheets/d/1y3rOqpZ1chq7SNdxRIdeHyhi7Kp0YL5UGbbUKDkjA-M/edit?usp=sharing)", unsafe_allow_html=True)
 
