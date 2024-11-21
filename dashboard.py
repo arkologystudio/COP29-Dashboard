@@ -3,7 +3,7 @@ import os
 from database import setup_google_sheets, get_sheets
 from listen import parse_narrative_artefact, search_narrative_artefacts
 import datetime
-from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, VOICES
+from config import SEARCH_CARD_TEMPLATE_FILE, RESPONSE_STRATEGIES, VOICES, LANGUAGES
 from respond import generate_response
 from typed_dicts import NarrativeResponse, Response, OriginalPost
 narrative_sheet = None
@@ -144,14 +144,15 @@ def handle_generate_hashtags(entry):
     except Exception as e:
         st.error(f"Failed to generate hashtags: {str(e)}")
 
-def handle_generate_response(narrative: dict, strategy: str, voice: str):
+def handle_generate_response(narrative: dict, strategy: str, voice: str, language: str):
     """Handle response generation for a narrative with specific strategy."""
     assistant_id = RESPONSE_STRATEGIES[strategy]
     llm_context = {
         "title": narrative['title'],
         "narrative": narrative['narrative'],
         "community": narrative['community'],
-        "content": narrative['content']
+        "content": narrative['content'],
+        "response_language": language
     }
     res = generate_response(assistant_id, llm_context)
 
@@ -161,7 +162,7 @@ def handle_generate_response(narrative: dict, strategy: str, voice: str):
 
     if voice != "Default":
         voice_assistant_id = VOICES[voice]
-        llm_context = narrative['content']
+        llm_context = narrative['content'] + "Respond using the following language: " + language
         res = generate_response(voice_assistant_id, res)
 
     # Create response object with strategy metadata
@@ -523,7 +524,7 @@ with tab2:
             with left_col:
                 # Create sub-columns for response controls with more balanced widths
                 with st.form(key=f"response_form_{unique_suffix}"):
-                    resp_col1, resp_col2 = st.columns(2)
+                    resp_col1, resp_col2, resp_col3 = st.columns(3)
                     with resp_col1:
                         strategy = st.selectbox(
                             "Strategy",
@@ -536,10 +537,18 @@ with tab2:
                             options=list(VOICES.keys()),
                             key=f"voice_{unique_suffix}"
                         )
+                    with resp_col3:
+                        language = st.selectbox(
+                            "Language",
+                            options=list(LANGUAGES),
+                            index=LANGUAGES.index("English"),
+                            key=f"language_{unique_suffix}"
+                            
+                        )
                     submit_response = st.form_submit_button("Generate Response")
                     if submit_response:
                         with st.spinner('Generating response...'):
-                            handle_generate_response(narrative, strategy, voice)
+                            handle_generate_response(narrative, strategy, voice, language)
             with right_col:
 
                 if not is_archived(narrative["hash"]):
